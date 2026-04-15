@@ -1,0 +1,14 @@
+{
+  "name": "single-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.17",
+    "elm": "^0.19.1-6",
+    "tailwindcss": "^4.0.17",
+    "vite": "^6.3.5"
+  }
+}

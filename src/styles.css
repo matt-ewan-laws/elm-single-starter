@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    @apply bg-slate-950 text-slate-100 antialiased;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  button {
+    @apply select-none;
+  }
+}

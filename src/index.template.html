@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Elm starter template with Tailwind and a single-file HTML build." />
+    <title>Elm Single-File Starter</title>
+    <style>{{TAILWIND}}</style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>new Function(atob("{{ELM}}"))();</script>
+    <script>
+      Elm.Main.init({ node: document.getElementById("app") });
+    </script>
+  </body>
+</html>
