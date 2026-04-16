@@ -2,16 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Elm starter template with Tailwind and a single-file HTML build." />
-    <title>Elm Single-File Starter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="First Bites is a minimalist exposure tracker that helps toddlers explore new foods one bite at a time." />
+    <meta name="theme-color" content="#f3f1e6" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="First Bites" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>First Bites</title>
     <style>{{TAILWIND}}</style>
   </head>
   <body>
     <div id="app"></div>
-    <script>new Function(atob("{{ELM}}"))();</script>
     <script>
-      Elm.Main.init({ node: document.getElementById("app") });
+      (function () {
+        var binary = atob("{{ELM}}");
+        var bytes = Uint8Array.from(binary, function (char) {
+          return char.charCodeAt(0);
+        });
+        var source = new TextDecoder("utf-8").decode(bytes);
+        new Function(source)();
+      })();
+    </script>
+    <script>
+      (function () {
+        var storageKey = "toddler-food-tracker";
+        var app = Elm.Main.init({ node: document.getElementById("app") });
+
+        function loadFoods() {
+          try {
+            var raw = localStorage.getItem(storageKey);
+            app.ports.foodsLoaded.send(raw ? JSON.parse(raw) : null);
+          } catch (error) {
+            console.warn("Unable to load food tracker state", error);
+            app.ports.foodsLoaded.send(null);
+          }
+        }
+
+        function saveFoods(payload) {
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(payload));
+          } catch (error) {
+            console.warn("Unable to save food tracker state", error);
+          }
+        }
+
+        if (app.ports && app.ports.saveFoods) {
+          app.ports.saveFoods.subscribe(saveFoods);
+        }
+
+        if (app.ports && app.ports.foodsLoaded) {
+          loadFoods();
+        }
+      })();
     </script>
   </body>
 </html>

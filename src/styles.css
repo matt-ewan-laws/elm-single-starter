@@ -2,14 +2,31 @@
 
 @layer base {
   html {
-    @apply bg-slate-950 text-slate-100 antialiased;
+    @apply bg-[#f3f1e6] text-slate-800 antialiased;
+    font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   }
 
   body {
     @apply min-h-screen;
+    margin: 0;
   }
 
   button {
     @apply select-none;
+  }
+
+  .emoji {
+    font-family:
+      "Apple Color Emoji",
+      "Segoe UI Emoji",
+      "Segoe UI Symbol",
+      "Noto Color Emoji",
+      "Avenir Next",
+      "Trebuchet MS",
+      "Segoe UI",
+      system-ui,
+      sans-serif;
+    font-variant-emoji: emoji;
+    font-feature-settings: "liga" 0;
   }
 }
