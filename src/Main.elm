@@ -60,6 +60,7 @@ type Overlay
     = NoOverlay
     | AddFood
     | Detail Int
+    | ConfirmClear Int
 
 
 type Tier
@@ -392,7 +393,7 @@ update msg model =
             persist { model | foods = updatedFoods }
 
         RequestClearFood foodId ->
-            ( model, requestClearFood foodId )
+            ( { model | overlay = ConfirmClear foodId }, Cmd.none )
 
         ClearFoodConfirmed foodId ->
             let
@@ -411,7 +412,7 @@ update msg model =
                         )
                         model.foods
             in
-            persist { model | foods = updatedFoods }
+            persist { model | foods = updatedFoods, overlay = NoOverlay }
 
         DeleteFood foodId ->
             let
@@ -1236,6 +1237,14 @@ overlayView model =
                 Nothing ->
                     text ""
 
+        ConfirmClear foodId ->
+            case foodById foodId model.foods of
+                Just food ->
+                    clearLogsOverlay food
+
+                Nothing ->
+                    text ""
+
 
 addFoodOverlay : Model -> Html Msg
 addFoodOverlay model =
@@ -1356,7 +1365,7 @@ detailOverlay model food =
                         [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white py-3 text-[16px] font-extrabold text-[#4f7d00] sm:py-4 sm:text-[18px]"
                         , onClick (RequestClearFood food.id)
                         ]
-                        [ text "Clear data" ]
+                        [ text "Clear logs" ]
                     , button
                         [ class "flex-[0.75] rounded-full border border-[#d8dfc7] bg-white py-2 text-[15px] font-extrabold text-slate-700 sm:py-3 sm:text-[16px]"
                         , onClick (ToggleShelf food.id)
@@ -1365,6 +1374,38 @@ detailOverlay model food =
                     ]
                 , p [ class "mt-4 text-center text-sm leading-7 text-slate-500" ]
                     [ text "Look, touch, and taste build familiarity. Eating a food across consecutive offerings is what promotes it to accepted." ]
+                ]
+            ]
+        ]
+
+
+clearLogsOverlay : Food -> Html Msg
+clearLogsOverlay food =
+    div
+        [ class "fixed inset-0 z-40 grid place-items-center bg-black/35 px-4 backdrop-blur-sm" ]
+        [ article
+            [ class "w-full max-w-[520px] rounded-[32px] bg-[#fcfbf7] p-6 shadow-[0_24px_60px_rgba(72,72,52,0.28)] sm:p-8" ]
+            [ div [ class "flex items-start gap-4" ]
+                [ div [ class "emoji grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#eef4df] text-[30px]" ]
+                    [ text food.emoji ]
+                , div [ class "flex-1" ]
+                    [ h2 [ class "text-[28px] font-extrabold tracking-tight text-slate-800" ]
+                        [ text "Clear logs?" ]
+                    , p [ class "mt-2 text-[16px] leading-7 text-slate-600" ]
+                        [ text ("This will remove every log entry for " ++ food.name ++ ".") ]
+                    ]
+                ]
+            , div [ class "mt-6 flex flex-col gap-3 sm:flex-row" ]
+                [ button
+                    [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white px-5 py-3 text-[16px] font-extrabold text-slate-700"
+                    , onClick CloseOverlay
+                    ]
+                    [ text "Cancel" ]
+                , button
+                    [ class "flex-1 rounded-full bg-[linear-gradient(180deg,#d95b35_0%,#b53c18_100%)] px-5 py-3 text-[16px] font-extrabold text-white shadow-[0_16px_28px_rgba(149,61,28,0.28)]"
+                    , onClick (ClearFoodConfirmed food.id)
+                    ]
+                    [ text "Clear logs" ]
                 ]
             ]
         ]
