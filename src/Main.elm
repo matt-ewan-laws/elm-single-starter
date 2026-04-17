@@ -533,7 +533,9 @@ view model =
         , style "background" "radial-gradient(circle at top, rgba(106, 147, 37, 0.15), transparent 34%), linear-gradient(180deg, #f8f6ef 0%, #f3f1e6 100%)"
         ]
         [ div
-            [ class "mx-auto flex min-h-screen w-full max-w-[440px] flex-col px-4 pb-28 pt-4" ]
+            [ class "mx-auto flex min-h-screen w-full flex-col px-4 pb-28 pt-4"
+            , style "max-width" "640px"
+            ]
             [ headerView model
             , mainView model
             , bottomNav model
@@ -1188,7 +1190,9 @@ bottomNav model =
     nav
         [ class "fixed inset-x-0 bottom-0 z-20 px-4 pb-4" ]
         [ div
-            [ class "mx-auto flex max-w-[440px] items-center justify-around rounded-[30px] bg-[linear-gradient(180deg,#edf1e6_0%,#e1e7d7_100%)] px-4 py-3 shadow-[0_10px_32px_rgba(111,111,78,0.12)]" ]
+            [ class "mx-auto flex w-full items-center justify-around rounded-[30px] bg-[linear-gradient(180deg,#edf1e6_0%,#e1e7d7_100%)] px-4 py-3 shadow-[0_10px_32px_rgba(111,111,78,0.12)]"
+            , style "max-width" "640px"
+            ]
             [ tabButton Tracker model.activeTab "Tracker" "🍽️"
             , tabButton History model.activeTab "History" "🕘"
             , tabButton Settings model.activeTab "Settings" "⚙️"
@@ -1238,7 +1242,9 @@ addFoodOverlay model =
     div
         [ class "fixed inset-0 z-30 bg-black/25 px-3 py-8 backdrop-blur-sm" ]
         [ div
-            [ class "mx-auto flex h-full max-w-[420px] items-end" ]
+            [ class "mx-auto flex h-full w-full items-end"
+            , style "max-width" "640px"
+            ]
             [ article
                 [ class "w-full rounded-[36px] bg-[#f8f7ef] p-6 shadow-[0_24px_60px_rgba(72,72,52,0.25)]" ]
                 [ div [ class "flex items-start justify-between gap-4" ]
@@ -1291,7 +1297,9 @@ detailOverlay model food =
     div
         [ class "fixed inset-0 z-30 overflow-y-auto bg-black/15 px-3 py-4 backdrop-blur-sm" ]
         [ div
-            [ class "mx-auto flex min-h-full max-w-[420px] items-center py-2" ]
+            [ class "mx-auto flex min-h-full w-full items-center py-2"
+            , style "max-width" "640px"
+            ]
             [ article
                 [ class "flex w-full max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto rounded-[36px] bg-[#fbfbf8] p-5 shadow-[0_24px_60px_rgba(72,72,52,0.24)] sm:p-6" ]
                 [ button
