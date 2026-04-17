@@ -125,6 +125,25 @@ genericFoodChoices =
     ]
 
 
+allFoodChoices : List FoodChoice
+allFoodChoices =
+    uniqueFoodChoicesByEmoji (foodChoices ++ genericFoodChoices)
+
+
+uniqueFoodChoicesByEmoji : List FoodChoice -> List FoodChoice
+uniqueFoodChoicesByEmoji choices =
+    List.reverse (List.foldl addUniqueFoodChoice [] choices)
+
+
+addUniqueFoodChoice : FoodChoice -> List FoodChoice -> List FoodChoice
+addUniqueFoodChoice choice uniqueChoices =
+    if List.any (\existing -> existing.emoji == choice.emoji) uniqueChoices then
+        uniqueChoices
+
+    else
+        choice :: uniqueChoices
+
+
 foodSeed : Int -> String -> String -> String -> Int -> Food
 foodSeed id name emoji category exposures =
     { id = id
@@ -735,7 +754,7 @@ addFoodOverlay model =
                     ]
                 , p [ class "mt-5 text-sm font-extrabold uppercase tracking-[0.25em] text-slate-500" ]
                     [ text "Tap to choose a food" ]
-                , emojiChoiceGrid model.draftEmoji (foodChoices ++ genericFoodChoices)
+                , emojiChoiceGrid model.draftEmoji allFoodChoices
                 , p [ class "mt-8 text-sm font-extrabold uppercase tracking-[0.25em] text-slate-500" ]
                     [ text "Food name" ]
                 , input
