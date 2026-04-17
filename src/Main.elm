@@ -67,6 +67,7 @@ type Overlay
     | AddFood
     | Detail Int
     | ConfirmClear Int
+    | ConfirmReset
 
 
 type Tier
@@ -193,7 +194,7 @@ initialModel =
     , overlay = NoOverlay
     , expandedFoodId = Nothing
     , foods = defaultFoods
-    , acceptanceThreshold = 3
+    , acceptanceThreshold = 15
     , nextFoodId = nextFoodId defaultFoods
     , draftName = ""
     , draftEmoji = "🍎"
@@ -237,6 +238,8 @@ type Msg
     | ClearFoodConfirmed Int
     | DeleteFood Int
     | ResetFoods
+    | RequestResetFoods
+    | ConfirmResetFoods
     | ExportFoods
     | ImportFoods
     | UpdateAcceptanceThreshold String
@@ -452,6 +455,12 @@ update msg model =
                     , overlay = overlay
                 }
 
+        RequestResetFoods ->
+            ( { model | overlay = ConfirmReset }, Cmd.none )
+
+        ConfirmResetFoods ->
+            resetAllFoods { model | overlay = NoOverlay }
+
         ResetFoods ->
             resetAllFoods model
 
@@ -543,7 +552,7 @@ resetAllFoods model =
         , draftNote = ""
         , historySearch = ""
         , pendingLog = Nothing
-        , acceptanceThreshold = 3
+        , acceptanceThreshold = 15
       }
     , clearFoods ()
     )
@@ -1186,8 +1195,8 @@ settingsView model =
             , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
                 [ text "Clear the tracker and start over with a fresh food routine." ]
             , button
-                [ class "mt-8 rounded-full bg-[linear-gradient(180deg,#c6ed8a_0%,#b8e57a_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.32em] text-[#4c8a00] shadow-[0_10px_18px_rgba(123,173,40,0.18)]"
-                , onClick ResetFoods
+                [ class "mt-8 rounded-full bg-[linear-gradient(180deg,#ff8b7a_0%,#e65c4a_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.32em] text-white shadow-[0_10px_18px_rgba(214,82,61,0.22)]"
+                , onClick RequestResetFoods
                 ]
                 [ text "RESET ALL DATA" ]
             ]
@@ -1209,12 +1218,6 @@ settingsView model =
                 , p [ class "text-[15px] leading-6 text-[#4b5d7f]" ]
                     [ text "eating logs" ]
                 ]
-            ]
-        , article
-            [ class "rounded-[40px] bg-[#f7e6dc] px-6 py-8 shadow-[0_18px_42px_rgba(194,142,111,0.12)] ring-1 ring-white/40" ]
-            [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a]" ] [ text "About the tracker" ]
-            , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
-                [ text ("A food moves on only after " ++ String.fromInt model.acceptanceThreshold ++ " consecutive eating logs. Look, touch, smell, and taste still count as progress, but they stay in the learning lane.") ]
             ]
         ]
 
@@ -1286,6 +1289,9 @@ overlayView model =
 
                 Nothing ->
                     text ""
+
+        ConfirmReset ->
+            resetSystemOverlay
 
 
 addFoodOverlay : Model -> Html Msg
@@ -1448,6 +1454,38 @@ clearLogsOverlay food =
                     , onClick (ClearFoodConfirmed food.id)
                     ]
                     [ text "Clear logs" ]
+                ]
+            ]
+        ]
+
+
+resetSystemOverlay : Html Msg
+resetSystemOverlay =
+    div
+        [ class "fixed inset-0 z-40 grid place-items-center bg-black/35 px-4 backdrop-blur-sm" ]
+        [ article
+            [ class "w-full max-w-[520px] rounded-[32px] bg-[#fcfbf7] p-6 shadow-[0_24px_60px_rgba(72,72,52,0.28)] sm:p-8" ]
+            [ div [ class "flex items-start gap-4" ]
+                [ div [ class "emoji grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#eef4df] text-[30px]" ]
+                    [ text "⚠️" ]
+                , div [ class "flex-1" ]
+                    [ h2 [ class "text-[28px] font-extrabold tracking-tight text-slate-800" ]
+                        [ text "Reset everything?" ]
+                    , p [ class "mt-2 text-[16px] leading-7 text-slate-600" ]
+                        [ text "This will clear the tracker, remove all food data, and start fresh." ]
+                    ]
+                ]
+            , div [ class "mt-6 flex flex-col gap-3 sm:flex-row" ]
+                [ button
+                    [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white px-5 py-3 text-[16px] font-extrabold text-slate-700"
+                    , onClick CloseOverlay
+                    ]
+                    [ text "Cancel" ]
+                , button
+                    [ class "flex-1 rounded-full bg-[linear-gradient(180deg,#d95b35_0%,#b53c18_100%)] px-5 py-3 text-[16px] font-extrabold text-white shadow-[0_16px_28px_rgba(149,61,28,0.28)]"
+                    , onClick ConfirmResetFoods
+                    ]
+                    [ text "Reset all data" ]
                 ]
             ]
         ]
