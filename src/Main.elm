@@ -12,6 +12,9 @@ import String
 port saveFoods : Encode.Value -> Cmd msg
 
 
+port clearFoods : () -> Cmd msg
+
+
 port foodsLoaded : (Decode.Value -> msg) -> Sub msg
 
 
@@ -111,6 +114,7 @@ type Msg
     | CreateFood
     | IncrementExposure Int
     | DeleteFood Int
+    | ResetFoods
     | ReceiveFoods Decode.Value
 
 
@@ -211,8 +215,11 @@ update msg model =
                 { model
                     | foods = remainingFoods
                     , nextFoodId = nextFoodId remainingFoods
-                    , overlay = overlay
+                , overlay = overlay
                 }
+
+        ResetFoods ->
+            resetAllFoods model
 
         ReceiveFoods raw ->
             case Decode.decodeValue (Decode.nullable (Decode.list foodDecoder)) raw of
@@ -240,6 +247,20 @@ persist model =
 
     else
         ( model, Cmd.none )
+
+
+resetAllFoods : Model -> ( Model, Cmd Msg )
+resetAllFoods model =
+    ( { model
+        | activeTab = Tracker
+        , overlay = NoOverlay
+        , foods = []
+        , nextFoodId = 1
+        , draftName = ""
+        , draftEmoji = "🍎"
+      }
+    , clearFoods ()
+    )
 
 
 view : Model -> Html Msg
@@ -463,32 +484,47 @@ historyCard item =
 
 settingsView : Html Msg
 settingsView =
-    div [ class "flex flex-1 flex-col gap-6" ]
-        [ sectionHeading "Settings" "Reset, export, and keep the journey tidy"
-        , settingsCard
-            "Reset System"
-            "Starting a new journey? You can clear all your history here to make room for new milestones."
-            "Fresh Start"
-            "This will wipe all food tracking data. Useful if starting for a new child or clearing old logs from previous years."
-            "🧹"
-            "bg-white/90"
-        , settingsCard
-            "Clear all data?"
-            "Once you reset, your toddler's food history, preferences, and nutritional summaries will be gone forever."
-            "Reset All Data"
-            "Permanently delete the local tracker state."
-            "🗑️"
-            "bg-[#faece3]"
+    div [ class "flex flex-1 flex-col gap-6 pt-2 pb-6" ]
+        [ article
+            [ class "relative overflow-hidden rounded-[48px] bg-white px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.12)] ring-1 ring-white/70 sm:px-8 sm:py-10" ]
+            [ div
+                [ class "absolute left-8 top-10 text-[28px] leading-none sm:left-12 sm:text-[34px]" ]
+                [ text "🧹" ]
+            , div [ class "mx-auto max-w-[280px] text-center sm:max-w-[320px]" ]
+                [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a] sm:text-[30px]" ]
+                    [ text "Reset System" ]
+                , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f] sm:text-[19px]" ]
+                    [ text "Starting a new journey? You can clear all your history here to make room for new milestones." ]
+                , button
+                    [ class "mt-8 rounded-full bg-[linear-gradient(180deg,#c6ed8a_0%,#b8e57a_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.32em] text-[#4c8a00] shadow-[0_10px_18px_rgba(123,173,40,0.18)] sm:px-8 sm:text-[16px]"
+                    , onClick ResetFoods
+                    ]
+                    [ text "FRESH START" ]
+                , p [ class "mt-8 text-[17px] leading-[1.8] text-[#4b5d7f] sm:text-[19px]" ]
+                    [ text "This will wipe all food tracking data. Useful if starting for a new child or clearing old logs from previous years." ]
+                ]
+            ]
         , article
-            [ class "rounded-[34px] bg-[linear-gradient(180deg,#dde6d4_0%,#e5ebdd_100%)] p-6 text-center" ]
-            [ div [ class "mx-auto grid h-24 w-24 place-items-center rounded-full bg-[#ffe4bf] text-[42px]" ] [ text "📦" ]
-            , p [ class "mt-4 text-xs uppercase tracking-[0.4em] text-slate-500" ] [ text "Clean slate" ]
-            , p [ class "mt-2 text-[18px] italic text-slate-600" ] [ text "Everything starts with a single bite." ]
+            [ class "rounded-[48px] bg-[#f7e6dc] px-6 py-8 shadow-[0_18px_42px_rgba(194,142,111,0.12)] ring-1 ring-white/40 sm:px-8 sm:py-10" ]
+            [ div [ class "flex items-start gap-5 sm:gap-7" ]
+                [ div
+                    [ class "grid h-20 w-20 shrink-0 place-items-center rounded-full bg-white/80 text-[26px] leading-none shadow-[0_8px_22px_rgba(160,129,108,0.10)] sm:h-24 sm:w-24 sm:text-[30px]" ]
+                    [ text "🗑️" ]
+                , div [ class "min-w-0 flex-1" ]
+                    [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a] sm:text-[30px]" ]
+                        [ text "Clear all data?" ]
+                    , p [ class "mt-4 max-w-[260px] text-[17px] leading-[1.75] text-[#4b5d7f] sm:max-w-[320px] sm:text-[19px]" ]
+                        [ text "Once you reset, your toddler's food history, preferences, and nutritional summaries will be gone forever." ]
+                    , button
+                        [ class "mt-8 rounded-full bg-[linear-gradient(180deg,#c6ed8a_0%,#b8e57a_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.3em] text-[#4c8a00] shadow-[0_10px_18px_rgba(123,173,40,0.18)] sm:px-8 sm:text-[16px]"
+                        , onClick ResetFoods
+                        ]
+                        [ text "RESET ALL DATA" ]
+                    , p [ class "mt-8 text-[17px] leading-[1.8] text-[#4b5d7f] sm:text-[19px]" ]
+                        [ text "Permanently delete the local tracker state." ]
+                    ]
+                ]
             ]
-        , button
-            [ class "w-full rounded-full py-5 text-[22px] font-extrabold text-[#3f7f09] transition hover:bg-white/50"
-            ]
-            [ text "Export Data First" ]
         ]
 
 
@@ -516,17 +552,21 @@ settingsCard :
     -> Html Msg
 settingsCard title body cta detail emoji wrapperClass =
     article
-        [ class ("rounded-[34px] p-6 shadow-[0_10px_26px_rgba(120,120,80,0.10)] " ++ wrapperClass) ]
-        [ div [ class "flex items-start gap-4" ]
-            [ div [ class "emoji grid h-20 w-20 shrink-0 place-items-center rounded-full bg-white/65 text-[34px]" ] [ text emoji ]
-            , div [ class "min-w-0" ]
-                [ h3 [ class "text-[24px] font-extrabold text-slate-800" ] [ text title ]
-                , p [ class "mt-2 text-[17px] leading-7 text-slate-600" ] [ text body ]
-                , button [ class "mt-4 rounded-full bg-[#c0ec9b] px-4 py-2 text-sm font-extrabold uppercase tracking-[0.25em] text-[#3f7f09]" ]
+        [ class ("rounded-[48px] px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.12)] ring-1 ring-white/50 sm:px-8 sm:py-10 " ++ wrapperClass) ]
+            [ div [ class "flex items-start gap-5 sm:gap-7" ]
+            [ div [ class ("grid h-20 w-20 shrink-0 place-items-center rounded-full bg-white/80 text-[26px] leading-none shadow-[0_8px_22px_rgba(160,129,108,0.10)] sm:h-24 sm:w-24 sm:text-[30px] " ++ if emoji == "🧹" then "bg-transparent shadow-none text-[22px] h-auto w-auto sm:text-[26px]" else "") ]
+                [ text emoji ]
+            , div [ class "min-w-0 flex-1" ]
+                [ h3 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a] sm:text-[30px]" ] [ text title ]
+                , p [ class "mt-4 max-w-[260px] text-[17px] leading-[1.75] text-[#4b5d7f] sm:max-w-[320px] sm:text-[19px]" ] [ text body ]
+                , button
+                    [ class "mt-8 rounded-full bg-[linear-gradient(180deg,#c6ed8a_0%,#b8e57a_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.3em] text-[#4c8a00] shadow-[0_10px_18px_rgba(123,173,40,0.18)] sm:px-8 sm:text-[16px]"
+                    , onClick ResetFoods
+                    ]
                     [ text cta ]
+                , p [ class "mt-8 text-[17px] leading-[1.8] text-[#4b5d7f] sm:text-[19px]" ] [ text detail ]
                 ]
             ]
-        , p [ class "mt-5 text-sm leading-7 text-slate-600" ] [ text detail ]
         ]
 
 

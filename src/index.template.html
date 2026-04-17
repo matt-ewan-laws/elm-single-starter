@@ -47,8 +47,20 @@
           }
         }
 
+        function clearFoods() {
+          try {
+            localStorage.removeItem(storageKey);
+          } catch (error) {
+            console.warn("Unable to clear food tracker state", error);
+          }
+        }
+
         if (app.ports && app.ports.saveFoods) {
           app.ports.saveFoods.subscribe(saveFoods);
+        }
+
+        if (app.ports && app.ports.clearFoods) {
+          app.ports.clearFoods.subscribe(clearFoods);
         }
 
         if (app.ports && app.ports.foodsLoaded) {
