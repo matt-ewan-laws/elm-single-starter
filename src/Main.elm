@@ -2,7 +2,7 @@ port module Main exposing (main)
 
 import Browser
 import Html exposing (Html, article, button, div, h1, h2, h3, h4, input, li, nav, p, section, span, text, ul)
-import Html.Attributes exposing (class, classList, placeholder, step, style, type_, value)
+import Html.Attributes exposing (class, classList, disabled, placeholder, step, style, type_, value)
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
@@ -35,6 +35,7 @@ type alias Model =
     , draftName : String
     , draftEmoji : String
     , draftPrepStyle : PrepStyle
+    , draftInteraction : Maybe Interaction
     , draftNote : String
     , storageReady : Bool
     , pendingLog : Maybe PendingLog
@@ -183,6 +184,7 @@ initialModel =
     , draftName = ""
     , draftEmoji = "🍎"
     , draftPrepStyle = Raw
+    , draftInteraction = Nothing
     , draftNote = ""
     , storageReady = False
     , pendingLog = Nothing
@@ -209,9 +211,11 @@ type Msg
     | UpdateDraftName String
     | UpdateDraftEmoji String
     | UpdateDraftPrepStyle PrepStyle
+    | UpdateDraftInteraction (Maybe Interaction)
     | UpdateDraftNote String
     | CreateFood
     | StartLog Int Interaction
+    | UndoLog Int Int
     | ToggleShelf Int
     | DeleteFood Int
     | ResetFoods
@@ -235,7 +239,7 @@ update msg model =
             ( { model | activeTab = tab, overlay = NoOverlay, expandedFoodId = Nothing }, Cmd.none )
 
         OpenAddFood ->
-            ( { model | overlay = AddFood, expandedFoodId = Nothing, draftName = "", draftEmoji = "🍎", draftPrepStyle = Raw, draftNote = "" }, Cmd.none )
+            ( { model | overlay = AddFood, expandedFoodId = Nothing, draftName = "", draftEmoji = "🍎", draftPrepStyle = Raw, draftInteraction = Nothing, draftNote = "" }, Cmd.none )
 
         OpenDetail foodId ->
             ( { model | overlay = Detail foodId }, Cmd.none )
@@ -253,7 +257,7 @@ update msg model =
             )
 
         CloseOverlay ->
-            ( { model | overlay = NoOverlay, pendingLog = Nothing }, Cmd.none )
+            ( { model | overlay = NoOverlay, pendingLog = Nothing, draftInteraction = Nothing }, Cmd.none )
 
         UpdateDraftName draftName ->
             ( { model | draftName = draftName }, Cmd.none )
@@ -273,6 +277,9 @@ update msg model =
 
         UpdateDraftPrepStyle draftPrepStyle ->
             ( { model | draftPrepStyle = draftPrepStyle }, Cmd.none )
+
+        UpdateDraftInteraction draftInteraction ->
+            ( { model | draftInteraction = draftInteraction }, Cmd.none )
 
         UpdateDraftNote draftNote ->
             ( { model | draftNote = draftNote }, Cmd.none )
@@ -307,6 +314,7 @@ update msg model =
                         , draftName = ""
                         , draftEmoji = "🍎"
                         , draftPrepStyle = Raw
+                        , draftInteraction = Nothing
                         , draftNote = ""
                         , overlay = NoOverlay
                     }
@@ -324,9 +332,29 @@ update msg model =
                             , prepStyle = model.draftPrepStyle
                             , note = String.trim model.draftNote
                             }
+                    , draftInteraction = Just interaction
                   }
                 , requestNow ()
                 )
+
+        UndoLog foodId logIndex ->
+            let
+                updatedFoods =
+                    updateFoodById
+                        foodId
+                        (\food ->
+                            let
+                                remainingLogs =
+                                    removeLogAtIndex logIndex food.logs
+
+                                nextTier =
+                                    recalculateTier food.tier model.acceptanceThreshold remainingLogs
+                            in
+                            { food | logs = remainingLogs, tier = nextTier }
+                        )
+                        model.foods
+            in
+            persist { model | foods = updatedFoods }
 
         ToggleShelf foodId ->
             let
@@ -427,6 +455,7 @@ update msg model =
                             | foods = updatedFoods
                             , pendingLog = Nothing
                             , overlay = NoOverlay
+                            , draftInteraction = Nothing
                             , currentTime = Just now
                         }
 
@@ -743,22 +772,14 @@ expandedFoodCard model food =
             ]
         , div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
             [ div [ class "flex items-center justify-between gap-3" ]
-                [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Quick Log" ]
-                , button
-                    [ class "inline-flex items-center gap-2 rounded-full border border-[#d8dfc7] bg-white px-3 py-2 text-[12px] font-extrabold uppercase tracking-[0.22em] text-[#4f7d00] shadow-[0_8px_14px_rgba(92,104,84,0.06)]"
-                    , onClick OpenAddFood
-                    ]
-                    [ span [ class "text-[16px] leading-none" ] [ text "+" ]
-                    , text "Add"
-                    ]
-                ]
+                [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Quick Log" ] ]
             , prepStylePicker model.draftPrepStyle
             , div [ class "mt-4 grid grid-cols-2 gap-3" ]
-                [ quickInteractionButton food.id Look "👀" "Look"
-                , quickInteractionButton food.id Touch "🤏" "Touch"
-                , quickInteractionButton food.id Smell "👃" "Smell"
-                , quickInteractionButton food.id Taste "👅" "Taste"
-                , quickInteractionButton food.id Eat "😋" "Eat"
+                [ interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Look "👀" "Look"
+                , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Touch "✋" "Touch"
+                , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Smell "👃" "Smell"
+                , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Taste "👅" "Taste"
+                , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Eat "😋" "Eat"
                 ]
             , notePills
             , input
@@ -768,21 +789,24 @@ expandedFoodCard model food =
                 , onInput UpdateDraftNote
                 ]
                 []
+            , button
+                [ classList
+                    [ ( "mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-[18px] font-extrabold shadow-[0_14px_24px_rgba(61,111,0,0.16)] transition", True )
+                    , ( "bg-[linear-gradient(180deg,#377800_0%,#255800_100%)] text-white", model.draftInteraction /= Nothing )
+                    , ( "bg-[#e9eee2] text-slate-400", model.draftInteraction == Nothing )
+                    ]
+                , disabled (model.draftInteraction == Nothing)
+                , onClick (StartLog food.id (Maybe.withDefault Eat model.draftInteraction))
+                ]
+                [ text "Add Log" ]
             ]
-        , div [ class "grid grid-cols-2 gap-3" ]
+        , div [ class "flex" ]
             [ button
                 [ class "inline-flex items-center justify-center gap-2 rounded-full bg-[#eef1e7] px-4 py-3 text-[18px] font-extrabold text-slate-800 shadow-[0_10px_18px_rgba(92,104,84,0.08)]"
                 , onClick (ToggleShelf food.id)
                 ]
                 [ span [ class "emoji text-[22px]" ] [ text "🗂️" ]
                 , text (if food.tier == Shelved then "Return" else "Shelve")
-                ]
-            , button
-                [ class "inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#377800_0%,#255800_100%)] px-4 py-3 text-[18px] font-extrabold text-white shadow-[0_14px_24px_rgba(61,111,0,0.22)]"
-                , onClick (OpenDetail food.id)
-                ]
-                [ span [ class "emoji text-[21px]" ] [ text "➕" ]
-                , text "Full Detail"
                 ]
             ]
         ]
@@ -811,7 +835,7 @@ quickInteractionButton : Int -> Interaction -> String -> String -> Html Msg
 quickInteractionButton foodId interaction emoji label =
     button
         [ class "flex items-center gap-3 rounded-[24px] bg-white px-4 py-3 text-left shadow-[0_10px_18px_rgba(103,120,78,0.08)] ring-1 ring-[#e2e8d7] transition active:scale-[0.99]"
-        , onClick (StartLog foodId interaction)
+        , onClick (UpdateDraftInteraction (Just interaction))
         ]
         [ div [ class "emoji grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#eef2e6] text-[23px]" ] [ text emoji ]
         , span [ class "text-[17px] font-bold text-slate-700" ] [ text label ]
@@ -960,6 +984,8 @@ historyCard :
     Int
     ->
     { at : Int
+    , foodId : Int
+    , logIndex : Int
     , food : String
     , interaction : Interaction
     , prepStyle : PrepStyle
@@ -969,8 +995,17 @@ historyCard :
 historyCard now item =
     article
         [ class "rounded-[28px] bg-white/88 p-5 shadow-[0_8px_26px_rgba(120,120,80,0.08)] ring-1 ring-white/70" ]
-        [ p [ class "text-xs font-bold uppercase tracking-[0.28em] text-slate-500" ] [ text (recencyLabel now (Just item.at)) ]
-        , h3 [ class "mt-2 text-[22px] font-extrabold text-slate-800" ] [ text item.food ]
+        [ div [ class "flex items-start justify-between gap-3" ]
+            [ div []
+                [ p [ class "text-xs font-bold uppercase tracking-[0.28em] text-slate-500" ] [ text (recencyLabel now (Just item.at)) ]
+                , h3 [ class "mt-2 text-[22px] font-extrabold text-slate-800" ] [ text item.food ]
+                ]
+            , button
+                [ class "rounded-full border border-[#d8dfc7] bg-white px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#4f7d00] shadow-[0_8px_14px_rgba(92,104,84,0.06)]"
+                , onClick (UndoLog item.foodId item.logIndex)
+                ]
+                [ text "Undo" ]
+            ]
         , div [ class "mt-3 flex flex-wrap items-center gap-2" ]
             [ span [ class "rounded-full bg-lime-200 px-3 py-1 text-sm font-semibold text-lime-950" ] [ text (interactionLabel item.interaction) ]
             , span [ class "rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700" ] [ text (prepStyleLabel item.prepStyle) ]
@@ -1125,6 +1160,9 @@ addFoodOverlay model =
 detailOverlay : Model -> Food -> Html Msg
 detailOverlay model food =
     let
+        now =
+            currentNow model
+
         lastInteractionText =
             case food.logs of
                 latest :: _ ->
@@ -1132,6 +1170,9 @@ detailOverlay model food =
 
                 [] ->
                     "No logs yet"
+
+        logs =
+            indexedRecentLogs food
     in
     div
         [ class "fixed inset-0 z-30 overflow-y-auto bg-black/15 px-3 py-4 backdrop-blur-sm" ]
@@ -1158,11 +1199,11 @@ detailOverlay model food =
                     [ text "Pick a prep style once, then tap the interaction that happened today." ]
                 , prepStylePicker model.draftPrepStyle
                 , div [ class "mt-5 space-y-3" ]
-                    [ interactionButton food.id model.draftPrepStyle model.draftNote Look "👀" "Look"
-                    , interactionButton food.id model.draftPrepStyle model.draftNote Touch "✋" "Touch"
-                    , interactionButton food.id model.draftPrepStyle model.draftNote Smell "👃" "Smell"
-                    , interactionButton food.id model.draftPrepStyle model.draftNote Taste "👅" "Taste"
-                    , interactionButton food.id model.draftPrepStyle model.draftNote Eat "😋" "Eat"
+                    [ interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Look "👀" "Look"
+                    , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Touch "✋" "Touch"
+                    , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Smell "👃" "Smell"
+                    , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Taste "👅" "Taste"
+                    , interactionButton model.draftInteraction food.id model.draftPrepStyle model.draftNote Eat "😋" "Eat"
                     ]
                 , notePills
                 , input
@@ -1172,6 +1213,17 @@ detailOverlay model food =
                     , onInput UpdateDraftNote
                     ]
                     []
+                , div [ class "mt-6 space-y-3" ]
+                    [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ]
+                        [ text "History" ]
+                    , if List.isEmpty logs then
+                        p [ class "text-[15px] leading-7 text-slate-500" ]
+                            [ text "No logs yet." ]
+
+                      else
+                        div [ class "space-y-3" ]
+                            (List.map (detailLogRow now food.id) logs)
+                    ]
                 , div [ class "mt-5 flex gap-3" ]
                     [ button
                         [ class "flex-1 rounded-full border-2 border-rose-300 bg-white py-3 text-[16px] font-extrabold text-rose-700 sm:py-4 sm:text-[18px]"
@@ -1225,17 +1277,19 @@ noteChip label =
         [ text label ]
 
 
-interactionButton : Int -> PrepStyle -> String -> Interaction -> String -> String -> Html Msg
-interactionButton foodId _ _ interaction emoji label =
+interactionButton : Maybe Interaction -> Int -> PrepStyle -> String -> Interaction -> String -> String -> Html Msg
+interactionButton selectedInteraction foodId _ _ interaction emoji label =
     button
-        [ class "flex w-full items-center gap-4 rounded-[26px] bg-[#eef2e6] px-4 py-3 text-left transition active:scale-[0.99] active:bg-[#e5ecd7]"
-        , onClick (StartLog foodId interaction)
+        [ classList
+            [ ( "flex w-full items-center gap-4 rounded-[26px] px-4 py-3 text-left transition active:scale-[0.99]", True )
+            , ( "bg-[#eef2e6] text-slate-700", selectedInteraction /= Just interaction )
+            , ( "bg-[#d9efb8] text-[#436f00] ring-2 ring-[#7fb83a]", selectedInteraction == Just interaction )
+            ]
+        , onClick (UpdateDraftInteraction (Just interaction))
         ]
         [ div [ class "emoji grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[24px] shadow-sm sm:h-14 sm:w-14 sm:text-[28px]" ] [ text emoji ]
         , div [ class "min-w-0" ]
-            [ span [ class "block text-[18px] font-semibold text-slate-700 sm:text-[20px]" ] [ text label ]
-            , span [ class "block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500" ] [ text "uses selected prep style" ]
-            ]
+            [ span [ class "block text-[18px] font-semibold text-slate-700 sm:text-[20px]" ] [ text label ] ]
         ]
 
 
@@ -1397,6 +1451,18 @@ recencyLabel now maybeAt =
                 "Long ago"
 
 
+recalculateTier : Tier -> Int -> List FoodLog -> Tier
+recalculateTier currentTier acceptanceThreshold logs =
+    if currentTier == Shelved then
+        Shelved
+
+    else if masteryStreak logs >= acceptanceThreshold then
+        Mastered
+
+    else
+        Active
+
+
 needsMaintenance : Int -> Food -> Bool
 needsMaintenance now food =
     case foodLastLoggedAt food of
@@ -1436,6 +1502,8 @@ recentLogItems :
     ->
         List
             { at : Int
+            , foodId : Int
+            , logIndex : Int
             , food : String
             , interaction : Interaction
             , prepStyle : PrepStyle
@@ -1445,9 +1513,11 @@ recentLogItems foods =
     foods
         |> List.concatMap
             (\food ->
-                List.map
-                    (\log ->
+                List.indexedMap
+                    (\logIndex log ->
                         { at = log.at
+                        , foodId = food.id
+                        , logIndex = logIndex
                         , food = food.name
                         , interaction = log.interaction
                         , prepStyle = log.prepStyle
@@ -1457,6 +1527,69 @@ recentLogItems foods =
                     food.logs
             )
         |> List.sortWith (\a b -> compare b.at a.at)
+
+
+indexedRecentLogs :
+    Food
+    ->
+        List
+            { at : Int
+            , logIndex : Int
+            , interaction : Interaction
+            , prepStyle : PrepStyle
+            , note : String
+            }
+indexedRecentLogs food =
+    food.logs
+        |> List.indexedMap
+            (\logIndex log ->
+                { at = log.at
+                , logIndex = logIndex
+                , interaction = log.interaction
+                , prepStyle = log.prepStyle
+                , note = log.note
+                }
+            )
+
+
+detailLogRow :
+    Int
+    ->
+    Int
+    ->
+    { at : Int
+    , logIndex : Int
+    , interaction : Interaction
+    , prepStyle : PrepStyle
+    , note : String
+    }
+    -> Html Msg
+detailLogRow now foodId item =
+    article
+        [ class "rounded-[24px] bg-white px-4 py-4 shadow-[0_8px_20px_rgba(120,120,80,0.06)] ring-1 ring-[#e5ead8]" ]
+        [ div [ class "flex items-start justify-between gap-3" ]
+            [ div []
+                [ p [ class "text-xs font-bold uppercase tracking-[0.24em] text-slate-500" ]
+                    [ text (recencyLabel now (Just item.at)) ]
+                , div [ class "mt-2 flex flex-wrap items-center gap-2" ]
+                    [ span [ class "rounded-full bg-lime-200 px-3 py-1 text-sm font-semibold text-lime-950" ]
+                        [ text (interactionLabel item.interaction) ]
+                    , span [ class "rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700" ]
+                        [ text (prepStyleLabel item.prepStyle) ]
+                    , if String.trim item.note == "" then
+                        text ""
+
+                      else
+                        span [ class "text-sm text-slate-500" ] [ text item.note ]
+                    ]
+                ]
+            , button
+                [ class "rounded-full border border-[#d8dfc7] bg-white px-3 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#4f7d00] shadow-[0_8px_14px_rgba(92,104,84,0.06)]"
+                , onClick (UndoLog foodId item.logIndex)
+                ]
+                [ text "Undo" ]
+            ]
+        ]
 
 
 applyPendingLog : Int -> Int -> PendingLog -> List Food -> List Food
@@ -1476,14 +1609,7 @@ applyPendingLog acceptanceThreshold now pending foods =
                     nextLog :: food.logs
 
                 nextTier =
-                    if masteryStreak nextLogs >= acceptanceThreshold then
-                        Mastered
-
-                    else if food.tier == Shelved then
-                        Active
-
-                    else
-                        food.tier
+                    recalculateTier food.tier acceptanceThreshold nextLogs
             in
             { food | logs = nextLogs, tier = nextTier }
         )
@@ -1545,6 +1671,14 @@ updateFoodById foodId transform foods =
                 food
         )
         foods
+
+
+removeLogAtIndex : Int -> List FoodLog -> List FoodLog
+removeLogAtIndex targetIndex logs =
+    logs
+        |> List.indexedMap Tuple.pair
+        |> List.filter (\( index, _ ) -> index /= targetIndex)
+        |> List.map Tuple.second
 
 
 foodById : Int -> List Food -> Maybe Food
