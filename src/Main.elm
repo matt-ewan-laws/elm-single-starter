@@ -594,7 +594,7 @@ trackerView model =
     div [ class "flex flex-1 flex-col gap-8" ]
         [ heroBanner activeFoods masteredFoods
         , section [ class "space-y-4" ]
-            [ sectionHeading "Active Queue" "Surfacing foods not seen recently"
+            [ sectionHeadingWithCount "Active Queue" (List.length activeFoods) "Surfacing foods not seen recently"
             , if List.isEmpty activeFoods then
                 emptyState "No active foods yet" "Add a food and start logging what they look at, touch, taste, or eat."
 
@@ -640,6 +640,19 @@ sectionHeading : String -> String -> Html Msg
 sectionHeading title subtitle =
     div []
         [ h2 [ class "text-[28px] font-extrabold tracking-tight text-slate-800" ] [ text title ]
+        , p [ class "mt-1 text-[16px] leading-6 text-slate-500" ] [ text subtitle ]
+        ]
+
+
+sectionHeadingWithCount : String -> Int -> String -> Html Msg
+sectionHeadingWithCount title count subtitle =
+    div []
+        [ div [ class "flex items-center justify-between gap-3" ]
+            [ h2 [ class "text-[28px] font-extrabold tracking-tight text-slate-800" ] [ text title ]
+            , span
+                [ class "inline-flex min-w-16 items-center justify-center rounded-full bg-[#e7f0d4] px-5 py-2 text-[20px] font-extrabold leading-none text-[#5b6d42] shadow-[0_8px_16px_rgba(91,109,66,0.08)]" ]
+                [ text (String.fromInt count) ]
+            ]
         , p [ class "mt-1 text-[16px] leading-6 text-slate-500" ] [ text subtitle ]
         ]
 
