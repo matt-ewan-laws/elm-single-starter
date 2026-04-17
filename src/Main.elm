@@ -607,12 +607,17 @@ activeFoodCard model food =
         , p [ class "mt-4 text-[14px] leading-6 text-slate-600" ]
             [ text summary ]
         , masterySequence food.logs
-        , div [ class "mt-5" ]
+        , div [ class "mt-5 flex gap-3" ]
             [ button
-                [ class "w-full rounded-full bg-white px-4 py-3.5 text-[24px] font-extrabold text-[#487600] shadow-[0_14px_26px_rgba(56,95,0,0.10)] ring-1 ring-white/80"
+                [ class "flex-[1.2] rounded-full bg-white px-4 py-3.5 text-[22px] font-extrabold text-[#487600] shadow-[0_14px_26px_rgba(56,95,0,0.10)] ring-1 ring-white/80"
                 , onClick (OpenDetail food.id)
                 ]
                 [ text "Log Try" ]
+            , button
+                [ class "flex-[0.65] rounded-full border border-[#d8dfc7] bg-white px-4 py-3.5 text-[17px] font-extrabold text-slate-700 shadow-[0_10px_18px_rgba(118,129,94,0.06)]"
+                , onClick (ToggleShelf food.id)
+                ]
+                [ text "Shelve" ]
             ]
         ]
 
