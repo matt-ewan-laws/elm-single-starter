@@ -43,6 +43,7 @@ type alias Model =
     , draftPrepStyle : PrepStyle
     , draftInteraction : Maybe Interaction
     , draftNote : String
+    , historySearch : String
     , storageReady : Bool
     , pendingLog : Maybe PendingLog
     , currentTime : Maybe Int
@@ -192,6 +193,7 @@ initialModel =
     , draftPrepStyle = Raw
     , draftInteraction = Nothing
     , draftNote = ""
+    , historySearch = ""
     , storageReady = False
     , pendingLog = Nothing
     , currentTime = Nothing
@@ -219,6 +221,7 @@ type Msg
     | UpdateDraftPrepStyle PrepStyle
     | UpdateDraftInteraction (Maybe Interaction)
     | UpdateDraftNote String
+    | UpdateHistorySearch String
     | CreateFood
     | StartLog Int Interaction
     | UndoLog Int Int
@@ -292,6 +295,9 @@ update msg model =
 
         UpdateDraftNote draftNote ->
             ( { model | draftNote = draftNote }, Cmd.none )
+
+        UpdateHistorySearch historySearch ->
+            ( { model | historySearch = historySearch }, Cmd.none )
 
         CreateFood ->
             let
@@ -514,6 +520,7 @@ resetAllFoods model =
         , draftEmoji = "🍎"
         , draftPrepStyle = Raw
         , draftNote = ""
+        , historySearch = ""
         , pendingLog = Nothing
         , acceptanceThreshold = 3
       }
@@ -999,12 +1006,20 @@ historyView model =
     let
         items =
             recentLogItems model.foods
+                |> filterHistoryItems model.historySearch
 
         now =
             currentNow model
     in
     div [ class "flex flex-1 flex-col gap-6" ]
         [ sectionHeading "History" "A quiet record of progress and refusals"
+        , input
+            [ class "w-full rounded-[24px] bg-white px-4 py-4 text-[16px] text-slate-700 outline-none placeholder:text-slate-400 ring-1 ring-[#dbe4cd] shadow-[0_10px_18px_rgba(103,120,78,0.06)]"
+            , placeholder "Search food, prep, interaction, or note..."
+            , value model.historySearch
+            , onInput UpdateHistorySearch
+            ]
+            []
         , if List.isEmpty items then
             emptyState "No logs yet" "Use the tracker tab to start building the timeline."
 
@@ -1049,6 +1064,54 @@ historyCard now item =
                 span [ class "text-sm text-slate-500" ] [ text item.note ]
             ]
         ]
+
+
+filterHistoryItems :
+    String
+    ->
+        List
+            { at : Int
+            , foodId : Int
+            , logIndex : Int
+            , food : String
+            , interaction : Interaction
+            , prepStyle : PrepStyle
+            , note : String
+            }
+    ->
+        List
+            { at : Int
+            , foodId : Int
+            , logIndex : Int
+            , food : String
+            , interaction : Interaction
+            , prepStyle : PrepStyle
+            , note : String
+            }
+filterHistoryItems query items =
+    let
+        normalizedQuery =
+            String.toLower (String.trim query)
+
+        matches item =
+            if normalizedQuery == "" then
+                True
+
+            else
+                let
+                    haystack =
+                        String.toLower
+                            (String.join " "
+                                [ item.food
+                                , interactionLabel item.interaction
+                                , prepStyleLabel item.prepStyle
+                                , item.note
+                                ]
+                            )
+                in
+                String.contains normalizedQuery haystack
+    in
+    List.filter matches items
 
 
 settingsView : Model -> Html Msg
