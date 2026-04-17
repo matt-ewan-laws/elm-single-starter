@@ -32,10 +32,16 @@
         function loadFoods() {
           try {
             var raw = localStorage.getItem(storageKey);
-            app.ports.foodsLoaded.send(raw ? JSON.parse(raw) : null);
+            var parsed = raw ? JSON.parse(raw) : null;
+
+            if (Array.isArray(parsed) || parsed === null) {
+              app.ports.foodsLoaded.send({ foods: parsed, acceptanceThreshold: null });
+            } else {
+              app.ports.foodsLoaded.send(parsed);
+            }
           } catch (error) {
             console.warn("Unable to load food tracker state", error);
-            app.ports.foodsLoaded.send(null);
+            app.ports.foodsLoaded.send({ foods: null, acceptanceThreshold: null });
           }
         }
 

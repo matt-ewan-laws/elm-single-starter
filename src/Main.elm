@@ -1,8 +1,9 @@
 port module Main exposing (main)
 
 import Browser
-import Html exposing (Html, article, button, div, h1, h2, h3, input, li, nav, p, section, span, text, ul)
-import Html.Attributes exposing (class, classList, placeholder, style, value)
+import Html exposing (Html, article, button, div, h1, h2, h3, h4, input, li, nav, p, section, span, text, ul)
+import Html.Attributes exposing (class, classList, placeholder, step, style, type_, value)
+import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
@@ -27,7 +28,9 @@ port nowLoaded : (Int -> msg) -> Sub msg
 type alias Model =
     { activeTab : Tab
     , overlay : Overlay
+    , expandedFoodId : Maybe Int
     , foods : List Food
+    , acceptanceThreshold : Int
     , nextFoodId : Int
     , draftName : String
     , draftEmoji : String
@@ -173,7 +176,9 @@ initialModel : Model
 initialModel =
     { activeTab = Tracker
     , overlay = NoOverlay
+    , expandedFoodId = Nothing
     , foods = defaultFoods
+    , acceptanceThreshold = 3
     , nextFoodId = nextFoodId defaultFoods
     , draftName = ""
     , draftEmoji = "🍎"
@@ -199,6 +204,7 @@ type Msg
     = SelectTab Tab
     | OpenAddFood
     | OpenDetail Int
+    | ToggleExpandedFood Int
     | CloseOverlay
     | UpdateDraftName String
     | UpdateDraftEmoji String
@@ -209,6 +215,7 @@ type Msg
     | ToggleShelf Int
     | DeleteFood Int
     | ResetFoods
+    | UpdateAcceptanceThreshold String
     | ReceiveFoods Decode.Value
     | ReceiveNow Int
 
@@ -225,13 +232,25 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         SelectTab tab ->
-            ( { model | activeTab = tab, overlay = NoOverlay }, Cmd.none )
+            ( { model | activeTab = tab, overlay = NoOverlay, expandedFoodId = Nothing }, Cmd.none )
 
         OpenAddFood ->
-            ( { model | overlay = AddFood, draftName = "", draftEmoji = "🍎", draftPrepStyle = Raw, draftNote = "" }, Cmd.none )
+            ( { model | overlay = AddFood, expandedFoodId = Nothing, draftName = "", draftEmoji = "🍎", draftPrepStyle = Raw, draftNote = "" }, Cmd.none )
 
         OpenDetail foodId ->
             ( { model | overlay = Detail foodId }, Cmd.none )
+
+        ToggleExpandedFood foodId ->
+            ( { model
+                | expandedFoodId =
+                    if model.expandedFoodId == Just foodId then
+                        Nothing
+
+                    else
+                        Just foodId
+              }
+            , Cmd.none
+            )
 
         CloseOverlay ->
             ( { model | overlay = NoOverlay, pendingLog = Nothing }, Cmd.none )
@@ -284,6 +303,7 @@ update msg model =
                     { model
                         | foods = model.foods ++ [ nextFood ]
                         , nextFoodId = model.nextFoodId + 1
+                        , expandedFoodId = Nothing
                         , draftName = ""
                         , draftEmoji = "🍎"
                         , draftPrepStyle = Raw
@@ -349,21 +369,40 @@ update msg model =
                 { model
                     | foods = remainingFoods
                     , nextFoodId = nextFoodId remainingFoods
+                    , expandedFoodId =
+                        if model.expandedFoodId == Just foodId then
+                            Nothing
+
+                        else
+                            model.expandedFoodId
                     , overlay = overlay
                 }
 
         ResetFoods ->
             resetAllFoods model
 
+        UpdateAcceptanceThreshold rawValue ->
+            let
+                parsed =
+                    case String.toInt rawValue of
+                        Just value ->
+                            max 1 value
+
+                        Nothing ->
+                            model.acceptanceThreshold
+            in
+            persist { model | acceptanceThreshold = parsed }
+
         ReceiveFoods raw ->
-            case Decode.decodeValue (Decode.nullable (Decode.list foodDecoder)) raw of
-                Ok maybeFoods ->
+            case Decode.decodeValue foodsStateDecoder raw of
+                Ok decoded ->
                     let
                         loadedFoods =
-                            Maybe.withDefault model.foods maybeFoods
+                            Maybe.withDefault model.foods decoded.foods
                     in
                     ( { model
                         | foods = loadedFoods
+                        , acceptanceThreshold = Maybe.withDefault model.acceptanceThreshold decoded.acceptanceThreshold |> max 1
                         , nextFoodId = nextFoodId loadedFoods
                         , storageReady = True
                       }
@@ -381,7 +420,7 @@ update msg model =
                 Just pending ->
                     let
                         updatedFoods =
-                            applyPendingLog now pending model.foods
+                            applyPendingLog model.acceptanceThreshold now pending model.foods
                     in
                     persist
                         { model
@@ -395,7 +434,7 @@ update msg model =
 persist : Model -> ( Model, Cmd Msg )
 persist model =
     if model.storageReady then
-        ( model, saveFoods (Encode.list foodEncoder model.foods) )
+        ( model, saveFoods (foodsStateEncoder model) )
 
     else
         ( model, Cmd.none )
@@ -406,6 +445,7 @@ resetAllFoods model =
     ( { model
         | activeTab = Tracker
         , overlay = NoOverlay
+        , expandedFoodId = Nothing
         , foods = []
         , nextFoodId = 1
         , draftName = ""
@@ -413,6 +453,7 @@ resetAllFoods model =
         , draftPrepStyle = Raw
         , draftNote = ""
         , pendingLog = Nothing
+        , acceptanceThreshold = 3
       }
     , clearFoods ()
     )
@@ -466,7 +507,7 @@ mainView model =
             historyView model
 
         Settings ->
-            settingsView
+            settingsView model
 
 
 trackerView : Model -> Html Msg
@@ -492,12 +533,12 @@ trackerView model =
                 div [ class "space-y-4" ] (List.map (activeFoodCard model) activeFoods)
             ]
         , section [ class "space-y-4" ]
-            [ sectionHeading "Shelved" "Paused foods for a calmer season"
-            , shelvedFoodsView shelvedFoods
+            [ sectionHeading "Accepted" "Foods that are eaten reliably"
+            , masteredFoodsView model masteredFoods
             ]
         , section [ class "space-y-4" ]
-            [ sectionHeading "Mastered" "Foods that are eaten reliably"
-            , masteredFoodsView model masteredFoods
+            [ sectionHeading "Shelved" "Paused foods for a calmer season"
+            , shelvedFoodsView shelvedFoods
             ]
         ]
 
@@ -514,7 +555,7 @@ heroBanner activeFoods masteredFoods =
             [ text "Choose a prep style once, then log look, touch, taste, or eat without extra friction." ]
         , div [ class "mt-5 flex flex-wrap gap-3" ]
             [ statPill (String.fromInt (List.length activeFoods) ++ " active")
-            , statPill (String.fromInt (List.length masteredFoods) ++ " mastered")
+            , statPill (String.fromInt (List.length masteredFoods) ++ " accepted")
             ]
         ]
 
@@ -543,179 +584,269 @@ activeFoodCard model food =
         counts =
             interactionCounts food.logs
 
-        summary =
-            foodSummary food
-
         ageLabel =
             recencyLabel now (foodLastLoggedAt food)
 
         maintenanceDue =
             needsMaintenance now food
 
-        phaseLabel =
-            if masteryStreak food.logs >= 3 then
-                "EAT PHASE"
+        exposureCount =
+            List.length food.logs
 
-            else if counts.eatCount > 0 then
-                "EAT PHASE"
-
-            else if counts.tasteCount > 0 then
-                "TASTE PHASE"
-
-            else if counts.touchCount > 0 || counts.smellCount > 0 then
-                "TOUCH PHASE"
-
-            else
-                "LOOK PHASE"
-
-        middleCount =
-            counts.touchCount + counts.smellCount + counts.tasteCount
+        expanded =
+            model.expandedFoodId == Just food.id
     in
     article
         [ classList
-            [ ( "rounded-[34px] bg-[linear-gradient(180deg,#fbfcf6_0%,#f5f7ee_100%)] p-4 shadow-[0_12px_28px_rgba(116,124,87,0.08)] ring-1 ring-white/90", True )
+            [ ( "overflow-hidden rounded-[36px] bg-white shadow-[0_18px_38px_rgba(109,121,78,0.12)] ring-1 ring-white/90", True )
             , ( "ring-[#dfe8ce]", food.tier == Active )
             ]
         ]
-        [ div [ class "flex items-start justify-between gap-3" ]
-            [ div [ class "flex items-center gap-3" ]
-                [ foodIcon food
-                , div [ class "min-w-0" ]
-                    [ h3 [ class "text-[28px] font-extrabold leading-none tracking-tight text-slate-800" ] [ text food.name ]
-                    , p [ class "mt-1.5 text-[13px] font-bold uppercase tracking-[0.24em] text-[#60718f]" ] [ text food.category ]
+        [ div [ class "h-3 bg-[linear-gradient(90deg,#2f6d00_0%,#62b122_100%)]" ] []
+        , div [ class "p-4 sm:p-5" ]
+            [ div [ class "flex items-center justify-between gap-3" ]
+                [ button
+                    [ class "flex min-w-0 flex-1 items-center gap-3 text-left"
+                    , onClick (ToggleExpandedFood food.id)
                     ]
-                ]
-            , div [ class "flex flex-col items-end gap-1.5" ]
-                [ tierBadge food.tier
-                , span
-                    [ classList
-                        [ ( "rounded-full px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.22em]", True )
-                        , ( "bg-[#f5dccf] text-[#b43700]", maintenanceDue )
-                        , ( "bg-[#e8f3d0] text-[#4b7a00]", not maintenanceDue )
+                    [ foodIcon food
+                    , div [ class "min-w-0" ]
+                        [ h3 [ class "truncate text-[26px] font-extrabold leading-none tracking-tight text-slate-800" ] [ text food.name ]
+                        , div [ class "mt-2 flex flex-wrap items-center gap-2" ]
+                            [ exposureBadge exposureCount
+                            , span
+                                [ classList
+                                    [ ( "rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em]", True )
+                                    , ( "bg-[#f5dccf] text-[#b43700]", maintenanceDue )
+                                    , ( "bg-[#eef3e4] text-[#5b6d42]", not maintenanceDue )
+                                    ]
+                                ]
+                                [ text ageLabel ]
+                            ]
                         ]
                     ]
-                    [ text ageLabel ]
+                , button
+                    [ class "shrink-0 inline-flex items-center gap-2 rounded-full bg-[linear-gradient(180deg,#377800_0%,#255800_100%)] px-4 py-3 text-[16px] font-extrabold text-white shadow-[0_12px_24px_rgba(61,111,0,0.24)]"
+                    , onClick (ToggleExpandedFood food.id)
+                    ]
+                    [ span [ class "text-[28px] leading-none" ] [ text "+" ]
+                    , text "Log"
+                    ]
+                ]
+            , div
+                [ classList
+                    [ ( "mt-5 overflow-hidden transition-all duration-300 ease-out", True )
+                    , ( "max-h-28 opacity-100 translate-y-0", not expanded )
+                    , ( "max-h-0 opacity-0 -translate-y-2 pointer-events-none", expanded )
+                    ]
+                ]
+                [ div [ class "grid grid-cols-5 gap-2 pb-1 sm:gap-3" ]
+                    [ compactMetric "👀" counts.lookCount
+                    , compactMetric "🤏" counts.touchCount
+                    , compactMetric "👃" counts.smellCount
+                    , compactMetric "👅" counts.tasteCount
+                    , compactMetric "😋" counts.eatCount
+                    ]
+                ]
+            , if expanded then
+                expandedFoodCard model food
+
+              else
+                text ""
+            ]
+        ]
+
+
+compactMetric : String -> Int -> Html Msg
+compactMetric emoji count =
+    div
+        [ class "relative flex items-center justify-center rounded-full bg-[#f2f4ec] px-3 py-3 text-[#50554c]" ]
+        [ span [ class "emoji text-[22px] leading-none" ] [ text emoji ]
+        , div [ class "absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full bg-white text-[15px] font-extrabold text-[#49503f] shadow-[0_6px_12px_rgba(103,120,78,0.12)] ring-1 ring-[#eef2e6]" ]
+            [ text (String.fromInt count) ]
+        ]
+
+
+expandedFoodCard : Model -> Food -> Html Msg
+expandedFoodCard model food =
+    let
+        counts =
+            interactionCounts food.logs
+
+        progressCurrent =
+            max 0 (masteryStreak food.logs)
+
+        progressGoal =
+            max 1 model.acceptanceThreshold
+
+        progressPercent =
+            String.fromFloat ((toFloat (min progressCurrent progressGoal) / toFloat progressGoal) * 100) ++ "%"
+
+        statusCopy =
+            if food.tier == Mastered then
+                "Accepted and going well"
+
+            else if progressCurrent > 0 then
+                "Building eating momentum"
+
+            else if counts.tasteCount > 0 || counts.touchCount > 0 || counts.smellCount > 0 then
+                "Needs more exposures"
+
+            else
+                "Just getting started"
+
+        statusEmoji =
+            if food.tier == Mastered then
+                "😋"
+
+            else if progressCurrent > 0 then
+                "🙂"
+
+            else
+                "😐"
+    in
+    div [ class "mt-5 space-y-4" ]
+        [ div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
+            [ p [ class "text-[18px] font-extrabold tracking-tight text-slate-700" ] [ text "Sensory Exposures" ]
+            , div [ class "mt-4 grid grid-cols-5 gap-3" ]
+                [ expandedMetric "👀" "Look" counts.lookCount True
+                , expandedMetric "🤏" "Touch" counts.touchCount False
+                , expandedMetric "👃" "Smell" counts.smellCount False
+                , expandedMetric "👅" "Taste" counts.tasteCount False
+                , expandedMetric "😋" "Eat" counts.eatCount False
                 ]
             ]
-        , div [ class "mt-5" ]
-            [ div [ class "flex items-start justify-between gap-3" ]
-                [ p [ class "text-[14px] font-extrabold uppercase tracking-[0.32em] text-[#5d6f8c]" ] [ text "Habituation" ]
-                , p [ class "text-[15px] font-extrabold uppercase tracking-[0.24em] text-[#4b7a00]" ] [ text phaseLabel ]
+        , div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
+            [ div [ class "flex items-center justify-between gap-3" ]
+                [ p [ class "text-[18px] font-extrabold tracking-tight text-slate-700" ] [ text "Eating Acceptance" ]
+                , p [ class "text-[18px] font-extrabold text-[#3b7500]" ] [ text (String.fromInt progressCurrent ++ " / " ++ String.fromInt progressGoal) ]
                 ]
-            , brokenProgressBar counts.lookCount middleCount counts.eatCount
+            , div [ class "mt-4 h-5 overflow-hidden rounded-full bg-[#dfe4d7]" ]
+                [ div
+                    [ class "h-full rounded-full bg-[linear-gradient(90deg,#2f6d00_0%,#6cab25_100%)]"
+                    , style "width" progressPercent
+                    ]
+                    []
+                ]
+            , p [ class "mt-3 text-[14px] leading-6 text-slate-600" ]
+                [ text ("Successfully eaten " ++ String.fromInt counts.eatCount ++ " time" ++ pluralize counts.eatCount ++ ". Goal is " ++ String.fromInt progressGoal ++ " for mastery.") ]
             ]
-        , p [ class "mt-4 text-[14px] leading-6 text-slate-600" ]
-            [ text summary ]
-        , masterySequence food.logs
-        , div [ class "mt-5 flex gap-3" ]
+        , div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
+            [ div [ class "flex items-center gap-4" ]
+                [ div [ class "emoji grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#ffc88f] text-[30px]" ] [ text statusEmoji ]
+                , div []
+                    [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Current Status" ]
+                    , p [ class "mt-1 text-[18px] font-extrabold tracking-tight text-slate-800" ] [ text statusCopy ]
+                    , p [ class "mt-1 text-[14px] leading-6 text-slate-600" ] [ text (foodSummary food) ]
+                    ]
+                ]
+            ]
+        , div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
+            [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Quick Log" ]
+            , prepStylePicker model.draftPrepStyle
+            , div [ class "mt-4 grid grid-cols-2 gap-3" ]
+                [ quickInteractionButton food.id Look "👀" "Look"
+                , quickInteractionButton food.id Touch "🤏" "Touch"
+                , quickInteractionButton food.id Smell "👃" "Smell"
+                , quickInteractionButton food.id Taste "👅" "Taste"
+                , quickInteractionButton food.id Eat "😋" "Eat"
+                ]
+            , notePills
+            , input
+                [ class "mt-4 w-full rounded-[24px] bg-white px-4 py-4 text-[16px] text-slate-700 outline-none placeholder:text-slate-400 ring-1 ring-[#dbe4cd]"
+                , placeholder "Optional note: texture, refusal, dip, mood..."
+                , value model.draftNote
+                , onInput UpdateDraftNote
+                ]
+                []
+            ]
+        , div [ class "grid grid-cols-2 gap-3" ]
             [ button
-                [ class "flex-[1.2] rounded-full bg-white px-4 py-3.5 text-[22px] font-extrabold text-[#487600] shadow-[0_14px_26px_rgba(56,95,0,0.10)] ring-1 ring-white/80"
-                , onClick (OpenDetail food.id)
-                ]
-                [ text "Log Try" ]
-            , button
-                [ class "flex-[0.65] rounded-full border border-[#d8dfc7] bg-white px-4 py-3.5 text-[17px] font-extrabold text-slate-700 shadow-[0_10px_18px_rgba(118,129,94,0.06)]"
+                [ class "inline-flex items-center justify-center gap-2 rounded-full bg-[#eef1e7] px-4 py-3 text-[18px] font-extrabold text-slate-800 shadow-[0_10px_18px_rgba(92,104,84,0.08)]"
                 , onClick (ToggleShelf food.id)
                 ]
-                [ text "Shelve" ]
+                [ span [ class "emoji text-[22px]" ] [ text "🗂️" ]
+                , text (if food.tier == Shelved then "Return" else "Shelve")
+                ]
+            , button
+                [ class "inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#377800_0%,#255800_100%)] px-4 py-3 text-[18px] font-extrabold text-white shadow-[0_14px_24px_rgba(61,111,0,0.22)]"
+                , onClick (OpenDetail food.id)
+                ]
+                [ span [ class "emoji text-[21px]" ] [ text "➕" ]
+                , text "Full Detail"
+                ]
             ]
         ]
 
 
-brokenProgressBar : Int -> Int -> Int -> Html Msg
-brokenProgressBar lookCount middleCount eatCount =
-    let
-        lookWidth =
-            progressWidth lookCount
-
-        middleWidth =
-            progressWidth middleCount
-
-        eatWidth =
-            progressWidth eatCount
-    in
-    div [ class "mt-2" ]
-        [ div [ class "grid grid-cols-3 gap-2" ]
-            [ progressSegment lookWidth False
-            , progressSegment middleWidth False
-            , progressSegment eatWidth True
-            ]
-        , div [ class "mt-1.5 grid grid-cols-3 gap-2" ]
-            [ progressLabel "Look"
-            , progressLabel "Touch"
-            , progressLabel "Taste"
-            ]
-        ]
-
-
-progressSegment : String -> Bool -> Html Msg
-progressSegment width isEat =
+expandedMetric : String -> String -> Int -> Bool -> Html Msg
+expandedMetric emoji label count highlighted =
     div
-        [ class "relative h-4 overflow-hidden rounded-full bg-[#e6ecd9]" ]
+        [ class "text-center" ]
         [ div
             [ classList
-                [ ( "absolute inset-y-0 left-0 rounded-full", True )
-                , ( "bg-[linear-gradient(90deg,#355f00_0%,#4e8500_55%,#6fa300_100%)]", not isEat )
-                , ( "bg-[linear-gradient(90deg,#c8ee67_0%,#a6de3c_100%)]", isEat )
+                [ ( "emoji relative mx-auto grid h-16 w-16 place-items-center rounded-full text-[28px] shadow-[0_10px_18px_rgba(103,120,78,0.10)]", True )
+                , ( "bg-[#3a7a00] text-white", highlighted )
+                , ( "bg-[#a7ef5d] text-[#2d4a00]", not highlighted )
                 ]
-            , style "width" width
             ]
-            []
+            [ text emoji
+            , div [ class "absolute -right-1 top-0 grid h-7 w-7 place-items-center rounded-full bg-white text-[16px] font-extrabold text-[#3b7500] shadow" ]
+                [ text (String.fromInt count) ]
+            ]
+        , p [ class "mt-3 text-[14px] font-extrabold text-slate-700" ] [ text label ]
         ]
 
 
-progressLabel : String -> Html Msg
-progressLabel label =
-    p [ class "text-center text-[14px] font-medium text-[#90948c]" ]
-        [ text label ]
-
-
-progressWidth : Int -> String
-progressWidth count =
-    if count <= 0 then
-        "0%"
-
-    else
-        let
-            width =
-                clamp 0.08 1 (toFloat count / 3)
-        in
-        String.fromFloat (width * 100) ++ "%"
-
-
-masterySequence : List FoodLog -> Html Msg
-masterySequence logs =
-    let
-        streak =
-            masteryStreak logs
-    in
-    div
-        [ class "mt-5 rounded-[30px] bg-white/82 p-3.5 shadow-[0_10px_18px_rgba(118,129,94,0.06)] ring-1 ring-white/80" ]
-        [ div [ class "flex items-center gap-4" ]
-            [ span [ class "text-[20px] leading-none text-[#a36a00]" ] [ text "★" ]
-            , h3 [ class "text-[16px] font-extrabold tracking-tight text-slate-700" ] [ text "Mastery Sequence" ]
-            , div [ class "ml-auto flex items-center gap-1.5" ]
-                (List.map (masteryDot streak) [ 1, 2, 3 ])
-            ]
+quickInteractionButton : Int -> Interaction -> String -> String -> Html Msg
+quickInteractionButton foodId interaction emoji label =
+    button
+        [ class "flex items-center gap-3 rounded-[24px] bg-white px-4 py-3 text-left shadow-[0_10px_18px_rgba(103,120,78,0.08)] ring-1 ring-[#e2e8d7] transition active:scale-[0.99]"
+        , onClick (StartLog foodId interaction)
+        ]
+        [ div [ class "emoji grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#eef2e6] text-[23px]" ] [ text emoji ]
+        , span [ class "text-[17px] font-bold text-slate-700" ] [ text label ]
         ]
 
 
-masteryDot : Int -> Int -> Html Msg
-masteryDot streak step =
+exposureBadge : Int -> Html Msg
+exposureBadge count =
     let
-        active =
-            streak >= step
+        suffix =
+            ordinalSuffix count
     in
     span
-        [ classList
-            [ ( "grid h-9 w-9 place-items-center rounded-full text-[16px] font-black transition", True )
-            , ( "bg-[#ffcb8f] text-[#8b4c00]", active )
-            , ( "bg-[#e0e0da] text-transparent", not active )
-            ]
+        [ class "inline-flex items-center gap-2 rounded-full bg-[#cfe8ff] px-3.5 py-2 text-[#15476a] shadow-[0_8px_16px_rgba(74,126,174,0.10)]" ]
+        [ span [ class "text-[24px] font-extrabold leading-none tracking-tight" ] [ text (String.fromInt count ++ suffix) ]
+        , span [ class "text-[11px] font-extrabold uppercase leading-none tracking-[0.12em]" ] [ text "Exposure" ]
         ]
-        [ text "•" ]
 
 
+ordinalSuffix : Int -> String
+ordinalSuffix count =
+    let
+        mod100 =
+            Basics.modBy 100 count
+
+        mod10 =
+            Basics.modBy 10 count
+    in
+    if mod100 >= 11 && mod100 <= 13 then
+        "th"
+
+    else
+        case mod10 of
+            1 ->
+                "st"
+
+            2 ->
+                "nd"
+
+            3 ->
+                "rd"
+
+            _ ->
+                "th"
 shelvedFoodsView : List Food -> Html Msg
 shelvedFoodsView foods =
     if List.isEmpty foods then
@@ -745,7 +876,7 @@ shelvedCard food =
 masteredFoodsView : Model -> List Food -> Html Msg
 masteredFoodsView model foods =
     if List.isEmpty foods then
-        emptyState "No mastered foods yet" "Once a food is eaten across consecutive offerings, it moves here."
+        emptyState "No accepted foods yet" "Once a food is eaten across consecutive offerings, it moves here."
 
     else
         div [ class "grid grid-cols-2 gap-4" ]
@@ -843,8 +974,8 @@ historyCard now item =
         ]
 
 
-settingsView : Html Msg
-settingsView =
+settingsView : Model -> Html Msg
+settingsView model =
     div [ class "flex flex-1 flex-col gap-6 pt-2 pb-6" ]
         [ article
             [ class "rounded-[40px] bg-white px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.12)] ring-1 ring-white/70" ]
@@ -858,10 +989,29 @@ settingsView =
                 [ text "RESET ALL DATA" ]
             ]
         , article
+            [ class "rounded-[40px] bg-[#eef6dd] px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.10)] ring-1 ring-white/70" ]
+            [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a]" ] [ text "Taste rule" ]
+            , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
+                [ text "Choose how many eating logs a food needs before the taste bar completes and it moves to accepted." ]
+            , div [ class "mt-6 flex items-center gap-4" ]
+                [ input
+                    [ class "w-24 rounded-[24px] bg-white px-4 py-3 text-center text-[24px] font-extrabold text-slate-800 outline-none ring-1 ring-[#d8e4c5]"
+                    , type_ "number"
+                    , Attr.min "1"
+                    , step "1"
+                    , value (String.fromInt model.acceptanceThreshold)
+                    , onInput UpdateAcceptanceThreshold
+                    ]
+                    []
+                , p [ class "text-[15px] leading-6 text-[#4b5d7f]" ]
+                    [ text "eating logs" ]
+                ]
+            ]
+        , article
             [ class "rounded-[40px] bg-[#f7e6dc] px-6 py-8 shadow-[0_18px_42px_rgba(194,142,111,0.12)] ring-1 ring-white/40" ]
             [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a]" ] [ text "About the tracker" ]
             , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
-                [ text "Mastery is awarded only after consecutive eating logs. Look, touch, smell, and taste still count as progress, but they stay in the learning lane." ]
+                [ text ("A food moves on only after " ++ String.fromInt model.acceptanceThreshold ++ " consecutive eating logs. Look, touch, smell, and taste still count as progress, but they stay in the learning lane.") ]
             ]
         ]
 
@@ -1020,13 +1170,13 @@ detailOverlay model food =
                         ]
                         [ text "Delete" ]
                     , button
-                        [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white py-3 text-[16px] font-extrabold text-slate-700 sm:py-4 sm:text-[18px]"
+                        [ class "flex-[0.75] rounded-full border border-[#d8dfc7] bg-white py-2 text-[15px] font-extrabold text-slate-700 sm:py-3 sm:text-[16px]"
                         , onClick (ToggleShelf food.id)
                         ]
                         [ text (if food.tier == Shelved then "Return" else "Shelf") ]
                     ]
                 , p [ class "mt-4 text-center text-sm leading-7 text-slate-500" ]
-                    [ text "Look, touch, and taste build familiarity. Eating a food across consecutive offerings is what promotes it to mastered." ]
+                    [ text "Look, touch, and taste build familiarity. Eating a food across consecutive offerings is what promotes it to accepted." ]
                 ]
             ]
         ]
@@ -1109,7 +1259,7 @@ foodSummary food =
     in
     case food.tier of
         Mastered ->
-            "Mastered by repeated eating. Keep checking it in every few weeks to make sure it stays easy."
+            "Accepted by repeated eating. Keep checking it in every few weeks to make sure it stays easy."
 
         Shelved ->
             "This one is paused for now. Return it when you want a lower-pressure meal."
@@ -1138,23 +1288,32 @@ tierBadge : Tier -> Html Msg
 tierBadge tier =
     case tier of
         Active ->
-            span [ class "rounded-full bg-[#eef6da] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#4d7d00]" ]
+            span [ class "rounded-full bg-[#eef6da] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#4d7d00]" ]
                 [ text "Active" ]
 
         Shelved ->
-            span [ class "rounded-full bg-[#f0efe8] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.24em] text-slate-500" ]
+            span [ class "rounded-full bg-[#f0efe8] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-slate-500" ]
                 [ text "Shelved" ]
 
         Mastered ->
-            span [ class "rounded-full bg-[#dff2b6] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#446f00]" ]
-                [ text "Mastered" ]
+            span [ class "rounded-full bg-[#dff2b6] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#446f00]" ]
+                [ text "Accepted" ]
 
 
 foodIcon : Food -> Html Msg
 foodIcon food =
     div
-        [ class "emoji grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#ffb35f] text-[34px]" ]
+        [ class "emoji grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#ffb35f] text-[34px] shadow-[0_10px_18px_rgba(255,179,95,0.24)]" ]
         [ text food.emoji ]
+
+
+pluralize : Int -> String
+pluralize count =
+    if count == 1 then
+        ""
+
+    else
+        "s"
 
 
 avatar : Html Msg
@@ -1291,8 +1450,8 @@ recentLogItems foods =
         |> List.sortWith (\a b -> compare b.at a.at)
 
 
-applyPendingLog : Int -> PendingLog -> List Food -> List Food
-applyPendingLog now pending foods =
+applyPendingLog : Int -> Int -> PendingLog -> List Food -> List Food
+applyPendingLog acceptanceThreshold now pending foods =
     updateFoodById
         pending.foodId
         (\food ->
@@ -1308,7 +1467,7 @@ applyPendingLog now pending foods =
                     nextLog :: food.logs
 
                 nextTier =
-                    if masteryStreak nextLogs >= 3 then
+                    if masteryStreak nextLogs >= acceptanceThreshold then
                         Mastered
 
                     else if food.tier == Shelved then
@@ -1320,6 +1479,45 @@ applyPendingLog now pending foods =
             { food | logs = nextLogs, tier = nextTier }
         )
         foods
+
+
+foodsStateEncoder : Model -> Encode.Value
+foodsStateEncoder model =
+    Encode.object
+        [ ( "foods", Encode.list foodEncoder model.foods )
+        , ( "acceptanceThreshold", Encode.int model.acceptanceThreshold )
+        ]
+
+
+type alias FoodsState =
+    { foods : Maybe (List Food)
+    , acceptanceThreshold : Maybe Int
+    }
+
+
+foodsStateDecoder : Decoder FoodsState
+foodsStateDecoder =
+    Decode.oneOf
+        [ Decode.map2
+            (\foods acceptanceThreshold ->
+                { foods = Just foods
+                , acceptanceThreshold = acceptanceThreshold
+                }
+            )
+            (Decode.field "foods" (Decode.list foodDecoder))
+            (Decode.oneOf
+                [ Decode.field "acceptanceThreshold" (Decode.nullable Decode.int)
+                , Decode.succeed Nothing
+                ]
+            )
+        , Decode.map
+            (\foods ->
+                { foods = foods
+                , acceptanceThreshold = Nothing
+                }
+            )
+            (Decode.nullable (Decode.list foodDecoder))
+        ]
 
 
 nextFoodId : List Food -> Int
