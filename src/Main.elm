@@ -400,16 +400,14 @@ update msg model =
                     updateFoodById
                         foodId
                         (\food ->
-                            { food
-                                | logs = []
-                                , tier =
-                                    case food.tier of
-                                        Shelved ->
-                                            Shelved
+                            let
+                                clearedLogs =
+                                    []
 
-                                        _ ->
-                                            Active
-                            }
+                                clearedTier =
+                                    recalculateTier food.tier model.acceptanceThreshold clearedLogs
+                            in
+                            { food | logs = clearedLogs, tier = clearedTier }
                         )
                         model.foods
             in
@@ -997,11 +995,18 @@ masteredCard model food =
             [ text (if stale then "Maintenance due" else "Stable") ]
         , p [ class "mt-1 text-sm text-slate-600" ]
             [ text (maintenanceCopy stale) ]
-        , button
-            [ class "mt-4 rounded-full border border-[#d8dfc7] bg-white px-4 py-2 text-sm font-bold text-slate-700"
-            , onClick (OpenDetail food.id)
+        , div [ class "mt-4 flex gap-2" ]
+            [ button
+                [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white px-4 py-2 text-sm font-bold text-slate-700"
+                , onClick (OpenDetail food.id)
+                ]
+                [ text "Check in" ]
+            , button
+                [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white px-4 py-2 text-sm font-bold text-[#4f7d00]"
+                , onClick (RequestClearFood food.id)
+                ]
+                [ text "Reset" ]
             ]
-            [ text "Check in" ]
         ]
 
 
