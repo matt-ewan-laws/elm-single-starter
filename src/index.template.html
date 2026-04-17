@@ -61,6 +61,14 @@
           }
         }
 
+        function requestClearFood(foodId) {
+          var confirmed = window.confirm("Clear all logged data for this food? This keeps the food itself, but removes its history.");
+
+          if (confirmed && app.ports && app.ports.clearFoodConfirmed) {
+            app.ports.clearFoodConfirmed.send(foodId);
+          }
+        }
+
         if (app.ports && app.ports.saveFoods) {
           app.ports.saveFoods.subscribe(saveFoods);
         }
@@ -73,6 +81,10 @@
           app.ports.requestNow.subscribe(function () {
             app.ports.nowLoaded.send(Date.now());
           });
+        }
+
+        if (app.ports && app.ports.requestClearFood) {
+          app.ports.requestClearFood.subscribe(requestClearFood);
         }
 
         if (app.ports && app.ports.foodsLoaded) {

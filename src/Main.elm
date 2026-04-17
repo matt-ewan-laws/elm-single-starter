@@ -16,10 +16,16 @@ port saveFoods : Encode.Value -> Cmd msg
 port clearFoods : () -> Cmd msg
 
 
+port requestClearFood : Int -> Cmd msg
+
+
 port foodsLoaded : (Decode.Value -> msg) -> Sub msg
 
 
 port requestNow : () -> Cmd msg
+
+
+port clearFoodConfirmed : (Int -> msg) -> Sub msg
 
 
 port nowLoaded : (Int -> msg) -> Sub msg
@@ -217,6 +223,8 @@ type Msg
     | StartLog Int Interaction
     | UndoLog Int Int
     | ToggleShelf Int
+    | RequestClearFood Int
+    | ClearFoodConfirmed Int
     | DeleteFood Int
     | ResetFoods
     | UpdateAcceptanceThreshold String
@@ -228,6 +236,7 @@ subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
         [ foodsLoaded ReceiveFoods
+        , clearFoodConfirmed ClearFoodConfirmed
         , nowLoaded ReceiveNow
         ]
 
@@ -370,6 +379,30 @@ update msg model =
 
                                         _ ->
                                             Shelved
+                            }
+                        )
+                        model.foods
+            in
+            persist { model | foods = updatedFoods }
+
+        RequestClearFood foodId ->
+            ( model, requestClearFood foodId )
+
+        ClearFoodConfirmed foodId ->
+            let
+                updatedFoods =
+                    updateFoodById
+                        foodId
+                        (\food ->
+                            { food
+                                | logs = []
+                                , tier =
+                                    case food.tier of
+                                        Shelved ->
+                                            Shelved
+
+                                        _ ->
+                                            Active
                             }
                         )
                         model.foods
@@ -1230,6 +1263,11 @@ detailOverlay model food =
                         , onClick (DeleteFood food.id)
                         ]
                         [ text "Delete" ]
+                    , button
+                        [ class "flex-1 rounded-full border border-[#d8dfc7] bg-white py-3 text-[16px] font-extrabold text-[#4f7d00] sm:py-4 sm:text-[18px]"
+                        , onClick (RequestClearFood food.id)
+                        ]
+                        [ text "Clear data" ]
                     , button
                         [ class "flex-[0.75] rounded-full border border-[#d8dfc7] bg-white py-2 text-[15px] font-extrabold text-slate-700 sm:py-3 sm:text-[16px]"
                         , onClick (ToggleShelf food.id)
