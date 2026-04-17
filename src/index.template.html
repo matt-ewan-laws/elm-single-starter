@@ -53,6 +53,71 @@
           }
         }
 
+        function exportFoods(payload) {
+          try {
+            var json = JSON.stringify(payload, null, 2);
+            var blob = new Blob([json], { type: "application/json;charset=utf-8" });
+            var url = URL.createObjectURL(blob);
+            var anchor = document.createElement("a");
+            var stamp = new Date().toISOString().slice(0, 10);
+
+            anchor.href = url;
+            anchor.download = "toddler-food-backup-" + stamp + ".json";
+            anchor.rel = "noopener";
+            anchor.style.display = "none";
+
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            console.warn("Unable to export food tracker state", error);
+          }
+        }
+
+        function requestImportFoods() {
+          var input = document.createElement("input");
+
+          input.type = "file";
+          input.accept = "application/json,.json";
+          input.style.display = "none";
+
+          input.addEventListener("change", function () {
+            var file = input.files && input.files[0];
+
+            if (!file) {
+              input.remove();
+              return;
+            }
+
+            var reader = new FileReader();
+
+            reader.onload = function () {
+              try {
+                var parsed = JSON.parse(String(reader.result || ""));
+
+                if (app.ports && app.ports.foodsLoaded) {
+                  app.ports.foodsLoaded.send(parsed);
+                }
+              } catch (error) {
+                console.warn("Unable to import food tracker state", error);
+              } finally {
+                input.remove();
+              }
+            };
+
+            reader.onerror = function () {
+              console.warn("Unable to read selected backup file");
+              input.remove();
+            };
+
+            reader.readAsText(file);
+          });
+
+          document.body.appendChild(input);
+          input.click();
+        }
+
         function clearFoods() {
           try {
             localStorage.removeItem(storageKey);
@@ -71,6 +136,14 @@
 
         if (app.ports && app.ports.saveFoods) {
           app.ports.saveFoods.subscribe(saveFoods);
+        }
+
+        if (app.ports && app.ports.exportFoods) {
+          app.ports.exportFoods.subscribe(exportFoods);
+        }
+
+        if (app.ports && app.ports.requestImportFoods) {
+          app.ports.requestImportFoods.subscribe(requestImportFoods);
         }
 
         if (app.ports && app.ports.clearFoods) {

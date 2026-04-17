@@ -13,6 +13,12 @@ import String
 port saveFoods : Encode.Value -> Cmd msg
 
 
+port exportFoods : Encode.Value -> Cmd msg
+
+
+port requestImportFoods : () -> Cmd msg
+
+
 port clearFoods : () -> Cmd msg
 
 
@@ -231,6 +237,8 @@ type Msg
     | ClearFoodConfirmed Int
     | DeleteFood Int
     | ResetFoods
+    | ExportFoods
+    | ImportFoods
     | UpdateAcceptanceThreshold String
     | ReceiveFoods Decode.Value
     | ReceiveNow Int
@@ -446,6 +454,20 @@ update msg model =
 
         ResetFoods ->
             resetAllFoods model
+
+        ExportFoods ->
+            if model.storageReady then
+                ( model, exportFoods (foodsStateEncoder model) )
+
+            else
+                ( model, Cmd.none )
+
+        ImportFoods ->
+            if model.storageReady then
+                ( model, requestImportFoods () )
+
+            else
+                ( model, Cmd.none )
 
         UpdateAcceptanceThreshold rawValue ->
             let
@@ -1139,6 +1161,26 @@ settingsView : Model -> Html Msg
 settingsView model =
     div [ class "flex flex-1 flex-col gap-6 pt-2 pb-6" ]
         [ article
+            [ class "rounded-[40px] bg-white px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.12)] ring-1 ring-white/70" ]
+            [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a]" ] [ text "Backup & restore" ]
+            , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
+                [ text "Export a JSON backup or restore one you saved earlier." ]
+            , div [ class "mt-8 flex flex-col gap-3 sm:flex-row" ]
+                [ button
+                    [ class "rounded-full bg-[linear-gradient(180deg,#4f7d00_0%,#376100_100%)] px-6 py-4 text-[14px] font-extrabold tracking-[0.24em] text-white shadow-[0_10px_18px_rgba(123,173,40,0.18)]"
+                    , onClick ExportFoods
+                    , disabled (not model.storageReady)
+                    ]
+                    [ text "EXPORT JSON" ]
+                , button
+                    [ class "rounded-full border border-[#cfd7bf] bg-white px-6 py-4 text-[14px] font-extrabold tracking-[0.24em] text-[#4c5f34] shadow-[0_10px_18px_rgba(123,173,40,0.10)]"
+                    , onClick ImportFoods
+                    , disabled (not model.storageReady)
+                    ]
+                    [ text "IMPORT JSON" ]
+                ]
+            ]
+        , article
             [ class "rounded-[40px] bg-white px-6 py-8 shadow-[0_18px_42px_rgba(130,120,90,0.12)] ring-1 ring-white/70" ]
             [ h2 [ class "text-[24px] font-extrabold tracking-tight text-[#1f2d4a]" ] [ text "Reset System" ]
             , p [ class "mt-4 text-[17px] leading-[1.75] text-[#4b5d7f]" ]
