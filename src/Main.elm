@@ -49,6 +49,7 @@ type alias Food =
     , exposures : Int
     , goal : Int
     , highestStage : Stage
+    , lastInteraction : Maybe Interaction
     }
 
 
@@ -57,6 +58,20 @@ type Stage
     | Learning
     | Growing
     | Mastered
+
+
+type Interaction
+    = Look
+    | Touch
+    | Smell
+    | Taste
+    | Eat
+
+
+type alias FoodChoice =
+    { emoji : String
+    , name : String
+    }
 
 
 defaultFoods : List Food
@@ -70,6 +85,46 @@ defaultFoods =
     ]
 
 
+foodChoices : List FoodChoice
+foodChoices =
+    [ { emoji = "🍎", name = "Apple" }
+    , { emoji = "🍌", name = "Banana" }
+    , { emoji = "🍓", name = "Strawberry" }
+    , { emoji = "🫐", name = "Blueberries" }
+    , { emoji = "🍐", name = "Pear" }
+    , { emoji = "🍊", name = "Orange" }
+    , { emoji = "🍉", name = "Watermelon" }
+    , { emoji = "🥦", name = "Broccoli" }
+    , { emoji = "🥕", name = "Carrot" }
+    , { emoji = "🍠", name = "Sweet Potato" }
+    , { emoji = "🌽", name = "Corn" }
+    , { emoji = "🍝", name = "Pasta" }
+    , { emoji = "🍚", name = "Rice" }
+    , { emoji = "🍞", name = "Bread" }
+    , { emoji = "🥣", name = "Oatmeal" }
+    , { emoji = "🧀", name = "Cheese" }
+    , { emoji = "🥛", name = "Milk" }
+    , { emoji = "🥚", name = "Egg" }
+    , { emoji = "🍗", name = "Chicken" }
+    , { emoji = "🐟", name = "Fish" }
+    , { emoji = "🥑", name = "Avocado" }
+    , { emoji = "🍪", name = "Snack" }
+    ]
+
+
+genericFoodChoices : List FoodChoice
+genericFoodChoices =
+    [ { emoji = "🍽️", name = "Meal" }
+    , { emoji = "🥗", name = "Vegetable Mix" }
+    , { emoji = "🍇", name = "Fruit" }
+    , { emoji = "🥛", name = "Dairy" }
+    , { emoji = "🍞", name = "Carbs" }
+    , { emoji = "🍗", name = "Protein" }
+    , { emoji = "🍪", name = "Snack" }
+    , { emoji = "❓", name = "Other" }
+    ]
+
+
 foodSeed : Int -> String -> String -> String -> Int -> Food
 foodSeed id name emoji category exposures =
     { id = id
@@ -79,6 +134,7 @@ foodSeed id name emoji category exposures =
     , exposures = exposures
     , goal = 15
     , highestStage = stageFromExposures exposures
+    , lastInteraction = Nothing
     }
 
 
@@ -113,6 +169,7 @@ type Msg
     | UpdateDraftEmoji String
     | CreateFood
     | IncrementExposure Int
+    | LogInteraction Int Interaction
     | DeleteFood Int
     | ResetFoods
     | ReceiveFoods Decode.Value
@@ -142,7 +199,17 @@ update msg model =
             ( { model | draftName = draftName }, Cmd.none )
 
         UpdateDraftEmoji draftEmoji ->
-            ( { model | draftEmoji = draftEmoji }, Cmd.none )
+            ( { model
+                | draftEmoji = draftEmoji
+                , draftName =
+                    if String.trim model.draftName == "" then
+                        defaultFoodNameForEmoji draftEmoji
+
+                    else
+                        model.draftName
+              }
+            , Cmd.none
+            )
 
         CreateFood ->
             let
@@ -160,6 +227,7 @@ update msg model =
                     , exposures = 0
                     , goal = 15
                     , highestStage = stageFromExposures 0
+                    , lastInteraction = Nothing
                     }
             in
             if name == "" then
@@ -188,6 +256,26 @@ update msg model =
                             { food
                                 | exposures = nextExposures
                                 , highestStage = stageFromExposures nextExposures
+                            }
+                        )
+                        model.foods
+            in
+            persist { model | foods = updatedFoods, overlay = NoOverlay }
+
+        LogInteraction foodId interaction ->
+            let
+                updatedFoods =
+                    updateFoodById
+                        foodId
+                        (\food ->
+                            let
+                                nextExposures =
+                                    food.exposures + 1
+                            in
+                            { food
+                                | exposures = nextExposures
+                                , highestStage = stageFromExposures nextExposures
+                                , lastInteraction = Just interaction
                             }
                         )
                         model.foods
@@ -639,15 +727,15 @@ addFoodOverlay model =
                 [ class "w-full rounded-[36px] bg-[#f8f7ef] p-6 shadow-[0_24px_60px_rgba(72,72,52,0.25)]" ]
                 [ div [ class "flex items-start justify-between gap-4" ]
                     [ h2 [ class "text-[34px] font-extrabold tracking-tight text-slate-800" ] [ text "New Bite" ]
-                    , button
+                , button
                         [ class "grid h-11 w-11 place-items-center rounded-full bg-[#dfe4d8] text-2xl text-slate-700"
                         , onClick CloseOverlay
                         ]
                         [ text "×" ]
                     ]
                 , p [ class "mt-5 text-sm font-extrabold uppercase tracking-[0.25em] text-slate-500" ]
-                    [ text "Tap to choose an emoji" ]
-                , emojiRow model.draftEmoji [ "🍎", "🥦", "🍝", "🍗", "🥛", "🍓", "🍌", "🥑" ]
+                    [ text "Tap to choose a food" ]
+                , emojiChoiceGrid model.draftEmoji (foodChoices ++ genericFoodChoices)
                 , p [ class "mt-8 text-sm font-extrabold uppercase tracking-[0.25em] text-slate-500" ]
                     [ text "Food name" ]
                 , input
@@ -674,53 +762,55 @@ addFoodOverlay model =
 detailOverlay : Food -> Html Msg
 detailOverlay food =
     let
-        nextExposure =
-            food.exposures + 1
+        lastInteractionLabel =
+            Maybe.map interactionLabel food.lastInteraction
     in
     div
-        [ class "fixed inset-0 z-30 bg-black/15 px-3 py-5 backdrop-blur-sm" ]
+        [ class "fixed inset-0 z-30 overflow-y-auto bg-black/15 px-3 py-4 backdrop-blur-sm" ]
         [ div
-            [ class "mx-auto flex h-full max-w-[420px] items-stretch" ]
+            [ class "mx-auto flex min-h-full max-w-[420px] items-center py-2" ]
             [ article
-                [ class "flex w-full flex-col rounded-[36px] bg-[#fbfbf8] p-6 shadow-[0_24px_60px_rgba(72,72,52,0.24)]" ]
+                [ class "flex w-full max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto rounded-[36px] bg-[#fbfbf8] p-5 shadow-[0_24px_60px_rgba(72,72,52,0.24)] sm:p-6" ]
                 [ button
                     [ class "self-start text-left text-[22px] font-semibold text-slate-600"
                     , onClick CloseOverlay
                     ]
                     [ text "← Cancel" ]
-                , div [ class "mt-8 grid place-items-center" ]
-                    [ div [ class "emoji grid h-28 w-28 place-items-center rounded-full bg-[#eaf8d9] text-[72px]" ] [ text food.emoji ] ]
-                , h2 [ class "mt-7 text-center text-[34px] font-extrabold tracking-tight text-slate-800" ] [ text food.name ]
-                , div [ class "mx-auto mt-3 inline-flex rounded-full bg-[#ffcb8e] px-4 py-2 text-sm font-extrabold uppercase tracking-[0.25em] text-[#8a4d00]" ]
+                , div [ class "mt-6 grid place-items-center" ]
+                    [ div [ class "emoji grid h-24 w-24 place-items-center rounded-full bg-[#eaf8d9] text-[60px] sm:h-28 sm:w-28 sm:text-[72px]" ] [ text food.emoji ] ]
+                , h2 [ class "mt-5 text-center text-[30px] font-extrabold tracking-tight text-slate-800 sm:text-[34px]" ] [ text food.name ]
+                , div [ class "mx-auto mt-3 inline-flex rounded-full bg-[#ffcb8e] px-4 py-2 text-xs font-extrabold uppercase tracking-[0.25em] text-[#8a4d00] sm:text-sm" ]
                     [ text (String.fromInt food.exposures ++ "th exposure") ]
-                , p [ class "mt-4 text-center text-sm font-bold uppercase tracking-[0.28em] text-slate-500" ]
+                , p [ class "mt-3 text-center text-[11px] font-bold uppercase tracking-[0.28em] text-slate-500 sm:text-sm" ]
                     [ text ("Stage: " ++ stageLabel food.highestStage) ]
-                , p [ class "mt-10 text-center text-[22px] leading-9 text-slate-600" ]
+                , case lastInteractionLabel of
+                    Just label ->
+                        p [ class "mt-3 text-center text-sm font-semibold uppercase tracking-[0.25em] text-slate-500" ]
+                            [ text ("Last interaction: " ++ label) ]
+
+                    Nothing ->
+                        text ""
+                , p [ class "mt-6 text-center text-[18px] leading-8 text-slate-600 sm:text-[22px] sm:leading-9" ]
                     [ text "How did they interact with it today?" ]
-                , div [ class "mt-8 space-y-4" ]
-                    [ interactionRow "👀" "Look"
-                    , interactionRow "✋" "Touch"
-                    , interactionRow "👃" "Smell"
-                    , interactionRow "👅" "Taste"
-                    , interactionRow "😋" "Eat"
+                , div [ class "mt-5 space-y-3" ]
+                    [ interactionRow food.id Look "👀" "Look"
+                    , interactionRow food.id Touch "✋" "Touch"
+                    , interactionRow food.id Smell "👃" "Smell"
+                    , interactionRow food.id Taste "👅" "Taste"
+                    , interactionRow food.id Eat "😋" "Eat"
                     ]
                 , button
-                    [ class "mt-8 w-full rounded-full bg-[linear-gradient(180deg,#4c8400_0%,#305f00_100%)] py-5 text-[22px] font-extrabold text-white shadow-[0_16px_28px_rgba(58,96,0,0.30)]"
-                    , onClick (IncrementExposure food.id)
-                    ]
-                    [ text ("Log Exposure" ++ (if nextExposure >= food.goal then " and Master It" else "")) ]
-                , button
-                    [ class "mt-4 w-full rounded-full border-2 border-rose-300 bg-white py-4 text-[18px] font-extrabold text-rose-700"
+                    [ class "mt-6 w-full rounded-full border-2 border-rose-300 bg-white py-3 text-[16px] font-extrabold text-rose-700 sm:py-4 sm:text-[18px]"
                     , onClick (DeleteFood food.id)
                     ]
                     [ text "Delete Food" ]
                 , p [ class "mt-4 text-center text-sm leading-7 text-slate-500" ]
                     [ text "Consistent exposure leads to food acceptance!" ]
                 , article
-                    [ class "mt-8 rounded-[32px] bg-[#dff0fb] p-6" ]
+                    [ class "mt-6 rounded-[28px] bg-[#dff0fb] p-5" ]
                     [ p [ class "text-xs font-extrabold uppercase tracking-[0.25em] text-sky-700" ] [ text "Pro tip" ]
-                    , h3 [ class "mt-3 text-[24px] font-extrabold text-slate-800" ] [ text "Keep it low pressure" ]
-                    , p [ class "mt-3 text-[18px] leading-8 text-slate-600" ]
+                    , h3 [ class "mt-2 text-[22px] font-extrabold text-slate-800" ] [ text "Keep it low pressure" ]
+                    , p [ class "mt-3 text-[16px] leading-7 text-slate-600 sm:text-[18px] sm:leading-8" ]
                         [ text "If they only want to look today, that's okay! Every interaction counts as progress toward loving their greens." ]
                     ]
                 ]
@@ -728,32 +818,121 @@ detailOverlay food =
         ]
 
 
-interactionRow : String -> String -> Html Msg
-interactionRow emoji label =
-    div
-        [ class "flex items-center gap-4 rounded-[30px] bg-[#eef2e6] px-4 py-4" ]
-        [ div [ class "emoji grid h-14 w-14 place-items-center rounded-full bg-white text-[28px] shadow-sm" ] [ text emoji ]
-        , span [ class "text-[22px] font-semibold text-slate-700" ] [ text label ]
+interactionRow : Int -> Interaction -> String -> String -> Html Msg
+interactionRow foodId interaction emoji label =
+    button
+        [ class "flex w-full items-center gap-4 rounded-[26px] bg-[#eef2e6] px-4 py-3 text-left transition active:scale-[0.99] active:bg-[#e5ecd7]"
+        , onClick (LogInteraction foodId interaction)
+        ]
+        [ div [ class "emoji grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[24px] shadow-sm sm:h-14 sm:w-14 sm:text-[28px]" ] [ text emoji ]
+        , span [ class "text-[18px] font-semibold text-slate-700 sm:text-[20px]" ] [ text label ]
         ]
 
 
-emojiRow : String -> List String -> Html Msg
-emojiRow selectedEmoji emojis =
+emojiChoiceGrid : String -> List FoodChoice -> Html Msg
+emojiChoiceGrid selectedEmoji choices =
     ul [ class "mt-5 grid list-none grid-cols-4 gap-4 p-0" ]
-        (List.map (emojiChip selectedEmoji) emojis)
+        (List.map (foodChoiceChip selectedEmoji) choices)
 
 
-emojiChip : String -> String -> Html Msg
-emojiChip selectedEmoji emoji =
+foodChoiceChip : String -> FoodChoice -> Html Msg
+foodChoiceChip selectedEmoji choice =
     li
         [ classList
             [ ( "grid h-16 w-16 place-items-center rounded-full text-[32px] transition", True )
-            , ( "bg-[#eef1e7]", emoji /= selectedEmoji )
-            , ( "bg-[#d9efb8] ring-2 ring-[#7fb83a]", emoji == selectedEmoji )
+            , ( "bg-[#eef1e7]", choice.emoji /= selectedEmoji )
+            , ( "bg-[#d9efb8] ring-2 ring-[#7fb83a]", choice.emoji == selectedEmoji )
             ]
-        , onClick (UpdateDraftEmoji emoji)
+        , onClick (UpdateDraftEmoji choice.emoji)
         ]
-        [ span [ class "emoji" ] [ text emoji ] ]
+        [ span [ class "emoji" ] [ text choice.emoji ]
+        , span [ class "sr-only" ] [ text choice.name ]
+        ]
+
+
+defaultFoodNameForEmoji : String -> String
+defaultFoodNameForEmoji emoji =
+    case emoji of
+        "🍎" ->
+            "Apple"
+
+        "🍌" ->
+            "Banana"
+
+        "🍓" ->
+            "Strawberry"
+
+        "🫐" ->
+            "Blueberries"
+
+        "🍐" ->
+            "Pear"
+
+        "🍊" ->
+            "Orange"
+
+        "🍉" ->
+            "Watermelon"
+
+        "🥦" ->
+            "Broccoli"
+
+        "🥕" ->
+            "Carrot"
+
+        "🍠" ->
+            "Sweet Potato"
+
+        "🌽" ->
+            "Corn"
+
+        "🍝" ->
+            "Pasta"
+
+        "🍚" ->
+            "Rice"
+
+        "🍞" ->
+            "Bread"
+
+        "🥣" ->
+            "Oatmeal"
+
+        "🧀" ->
+            "Cheese"
+
+        "🥛" ->
+            "Milk"
+
+        "🥚" ->
+            "Egg"
+
+        "🍗" ->
+            "Chicken"
+
+        "🐟" ->
+            "Fish"
+
+        "🥑" ->
+            "Avocado"
+
+        "🍪" ->
+            "Snack"
+
+        "🍽️" ->
+            "Meal"
+
+        "🥗" ->
+            "Vegetable Mix"
+
+        "🍇" ->
+            "Fruit"
+
+        "❓" ->
+            "Other"
+
+        _ ->
+            "Custom Food"
 
 
 foodIcon : Food -> Html Msg
@@ -861,13 +1040,21 @@ foodEncoder food =
         , ( "exposures", Encode.int food.exposures )
         , ( "goal", Encode.int food.goal )
         , ( "highestStage", stageEncoder food.highestStage )
+        , ( "lastInteraction"
+          , case food.lastInteraction of
+                Just interaction ->
+                    interactionEncoder interaction
+
+                Nothing ->
+                    Encode.null
+          )
         ]
 
 
 foodDecoder : Decoder Food
 foodDecoder =
-    Decode.map6
-        (\id name emoji category exposures goal ->
+    Decode.map7
+        (\id name emoji category exposures goal lastInteraction ->
             { id = id
             , name = name
             , emoji = emoji
@@ -875,6 +1062,7 @@ foodDecoder =
             , exposures = exposures
             , goal = goal
             , highestStage = stageFromExposures exposures
+            , lastInteraction = lastInteraction
             }
         )
         (Decode.field "id" Decode.int)
@@ -883,6 +1071,77 @@ foodDecoder =
         (Decode.field "category" Decode.string)
         (Decode.field "exposures" Decode.int)
         (Decode.field "goal" Decode.int)
+        (Decode.oneOf
+            [ Decode.field "lastInteraction" (Decode.nullable interactionDecoder)
+            , Decode.succeed Nothing
+            ]
+        )
+
+
+interactionLabel : Interaction -> String
+interactionLabel interaction =
+    case interaction of
+        Look ->
+            "Look"
+
+        Touch ->
+            "Touch"
+
+        Smell ->
+            "Smell"
+
+        Taste ->
+            "Taste"
+
+        Eat ->
+            "Eat"
+
+
+interactionEncoder : Interaction -> Encode.Value
+interactionEncoder interaction =
+    Encode.string
+        (case interaction of
+            Look ->
+                "look"
+
+            Touch ->
+                "touch"
+
+            Smell ->
+                "smell"
+
+            Taste ->
+                "taste"
+
+            Eat ->
+                "eat"
+        )
+
+
+interactionDecoder : Decoder Interaction
+interactionDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "look" ->
+                        Decode.succeed Look
+
+                    "touch" ->
+                        Decode.succeed Touch
+
+                    "smell" ->
+                        Decode.succeed Smell
+
+                    "taste" ->
+                        Decode.succeed Taste
+
+                    "eat" ->
+                        Decode.succeed Eat
+
+                    _ ->
+                        Decode.fail ("Unknown interaction: " ++ value)
+            )
 
 
 stageEncoder : Stage -> Encode.Value
