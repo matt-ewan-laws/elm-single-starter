@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="First Bites is a minimalist exposure tracker that helps toddlers explore new foods one bite at a time." />
+    <meta name="description" content="Toddler Tracker helps parents log food exploration, repeated eating, and maintenance check-ins with low-friction input." />
     <meta name="theme-color" content="#f3f1e6" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="First Bites" />
     <meta name="format-detection" content="telephone=no" />
-    <title>First Bites</title>
+    <title>Toddler Tracker</title>
     <style>{{TAILWIND}}</style>
   </head>
   <body>
@@ -61,6 +61,12 @@
 
         if (app.ports && app.ports.clearFoods) {
           app.ports.clearFoods.subscribe(clearFoods);
+        }
+
+        if (app.ports && app.ports.requestNow && app.ports.nowLoaded) {
+          app.ports.requestNow.subscribe(function () {
+            app.ports.nowLoaded.send(Date.now());
+          });
         }
 
         if (app.ports && app.ports.foodsLoaded) {
