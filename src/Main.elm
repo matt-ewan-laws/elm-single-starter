@@ -742,7 +742,16 @@ expandedFoodCard model food =
                 ]
             ]
         , div [ class "rounded-[30px] bg-[linear-gradient(180deg,#f5f7ef_0%,#eff2e7_100%)] p-4 shadow-inner ring-1 ring-white/70" ]
-            [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Quick Log" ]
+            [ div [ class "flex items-center justify-between gap-3" ]
+                [ p [ class "text-[11px] font-extrabold uppercase tracking-[0.3em] text-slate-500" ] [ text "Quick Log" ]
+                , button
+                    [ class "inline-flex items-center gap-2 rounded-full border border-[#d8dfc7] bg-white px-3 py-2 text-[12px] font-extrabold uppercase tracking-[0.22em] text-[#4f7d00] shadow-[0_8px_14px_rgba(92,104,84,0.06)]"
+                    , onClick OpenAddFood
+                    ]
+                    [ span [ class "text-[16px] leading-none" ] [ text "+" ]
+                    , text "Add"
+                    ]
+                ]
             , prepStylePicker model.draftPrepStyle
             , div [ class "mt-4 grid grid-cols-2 gap-3" ]
                 [ quickInteractionButton food.id Look "👀" "Look"
