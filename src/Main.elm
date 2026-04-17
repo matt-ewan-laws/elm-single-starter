@@ -1480,8 +1480,40 @@ tierBadge tier =
 foodIcon : Food -> Html Msg
 foodIcon food =
     div
-        [ class "emoji grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#ffb35f] text-[34px] shadow-[0_10px_18px_rgba(255,179,95,0.24)]" ]
+        ( [ class "emoji grid h-16 w-16 shrink-0 place-items-center rounded-full text-[34px]" ]
+            ++ pastelColorStyles food.name
+        )
         [ text food.emoji ]
+
+
+pastelColorStyles : String -> List (Html.Attribute msg)
+pastelColorStyles name =
+    let
+        hue =
+            nameHash name |> modBy 360
+
+        saturation =
+            82
+
+        lightness =
+            74
+
+        accentLightness =
+            62
+    in
+    [ style "background" ("hsl(" ++ String.fromInt hue ++ " " ++ String.fromInt saturation ++ "% " ++ String.fromInt lightness ++ "%)")
+    , style "color" ("hsl(" ++ String.fromInt hue ++ " 35% 28%)")
+    , style "box-shadow" ("0 10px 18px hsl(" ++ String.fromInt hue ++ " " ++ String.fromInt saturation ++ "% " ++ String.fromInt accentLightness ++ "% / 0.24)")
+    ]
+
+
+nameHash : String -> Int
+nameHash =
+    String.foldl
+        (\char hash ->
+            (hash * 31 + Char.toCode char) |> modBy 2147483647
+        )
+        0
 
 
 pluralize : Int -> String
